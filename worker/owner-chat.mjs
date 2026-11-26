@@ -21,7 +21,8 @@
 //   devolve o cursor (última seq da página); sem sobreposição que faça o cliente saltar. Marcador KV é só dica.
 // * Sentinela proativa (cron 5,35, depois do motor): canal esperado sem publicação depois do horário vira
 //   "CANAL PARADO" com o motivo (pausado, sem credencial, erro); venda aprovada nova vira aviso.
-import { OWNER_PIN_PATHS, handlePinLogin, handlePinLogout, hasPinSession, pinConfigured, PIN_PAGE, PIN_PAGE_HEADERS } from "./owner-pin.mjs";
+import { OWNER_PIN_PATHS, handlePinLogin, handlePinLogout, sessionHash, logoutPending, pinConfigured, PIN_PAGE, PIN_PAGE_HEADERS } from "./owner-pin.mjs";
+import { SESSION_AUTHORITY, SESSION_VALID_SQL, ensureSessionSchema, checkSession, purgeLegacyKvSessions, sessionRetention } from "./owner-session.mjs";
 import { acquisitionSnapshot, OWNER_DISABLED_CHANNELS } from "./acquisition-engine.mjs";
 import { SALES_SUMMARY_KEY } from "./sales-ledger.mjs";
 import { CREATIVE_AUTOPUBLISH_PAUSE_KEY } from "./creative-autonomy.mjs";
@@ -73,13 +74,15 @@ const ROW = "id::text as id, seq::text as seq, created_at, sender, kind, body, a
 const toMessage = (r) => ({ id: String(r.id), seq: String(r.seq), at: new Date(r.created_at).toISOString(), from: r.sender, kind: r.kind, text: r.body,
   ...(r.action_type ? { action: { type: r.action_type, expiresAt: Date.parse(r.action_expires_at), state: r.action_state } } : {}) });
 
-async function insertMessage(sql, { from, kind, text, action = null, dedupe = null }) {
+// `session` (hash) autoriza o insert NA MESMA instrução (FOR SHARE na sessão, R1.1); null = gravação interna do sistema.
+async function insertMessage(sql, { from, kind, text, action = null, dedupe = null, session = null }) {
   // O contador é travado pelo UPSERT até o commit deste comando: seq segue a ordem de commit.
   const rows = await sql.query(`/*owner-chat:insert*/ with c as (insert into zevanory_owner_chat_seq (k, n) values (1, 1)
       on conflict (k) do update set n = zevanory_owner_chat_seq.n + 1 returning n)
     insert into zevanory_owner_chat_messages (seq, sender, kind, body, action_type, action_expires_at, action_state, dedupe_key)
     select c.n, $1, $2, $3, $4, case when $4::text is null then null else now() + ($5::integer * interval '1 second') end, case when $4::text is null then null else 'proposta' end, $6 from c
-    on conflict (dedupe_key) do nothing returning ${ROW}`, [from, kind, String(text).slice(0, 4000), action, ACTION_TTL_SECONDS, dedupe]);
+    where ($7::text is null or ${SESSION_VALID_SQL(7)})
+    on conflict (dedupe_key) do nothing returning ${ROW}`, [from, kind, String(text).slice(0, 4000), action, ACTION_TTL_SECONDS, dedupe, session]);
   return rows[0] ? toMessage(rows[0]) : null;
 }
 export async function insertOwnerMessage(sql, m) { await ensureOwnerChatSchema(sql); return insertMessage(sql, m); }
@@ -262,7 +265,11 @@ export async function runOwnerChatRetention(env, { sqlFactory } = {}) {
     await ensureOwnerChatSchema(sql);
     const m = await sql.query(`/*owner-chat:retention*/ with d as (delete from zevanory_owner_chat_messages where created_at < now() - interval '180 days' returning 1) select count(*)::int as n from d`, []);
     const a = await sql.query(`/*owner-chat:retention-ai*/ with d as (delete from zevanory_owner_chat_ai_usage where day < current_date - 60 returning 1) select count(*)::int as n from d`, []);
-    return { ok: true, messages: Number(m[0]?.n || 0), ai_days: Number(a[0]?.n || 0) };
+    await ensureSessionSchema(sql);
+    const s = await sessionRetention(sql);
+    // R1.2: sessões antigas do KV nunca voltam a existir (defesa contra rollback para código anterior).
+    const purge = await purgeLegacyKvSessions(env.ZEVANORY_PRIVATE_ARTIFACTS, { force: true }).catch(() => ({ ok: false }));
+    return { ok: true, messages: Number(m[0]?.n || 0), ai_days: Number(a[0]?.n || 0), sessions: s.sessions, pin_attempts: s.attempts, legacy_kv_sessions_deleted: purge.deleted ?? null };
   } catch { return { ok: false, code: "retention_failed" }; }
 }
 
@@ -309,7 +316,7 @@ function sameOrigin(request, url) { return request.headers.get("origin") === url
 const unauthorized = () => new Response("autenticação necessária", { status: 401, headers: { "www-authenticate": 'Basic realm="ZEVANORY proprietario", charset="UTF-8"', "cache-control": "no-store" } });
 export const isOwnerChatPath = (pathname) => pathname === OWNER_CHAT_PATHS.page || pathname.startsWith("/api/admin/owner-chat/");
 
-export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sqlFactory, snapshot } = {}) {
+export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sqlFactory, snapshot, sessionAuthority = SESSION_AUTHORITY } = {}) {
   const url = new URL(request.url);
   if (!isOwnerChatPath(url.pathname)) return null;
   // CA-11: a API do chat só atende a própria origem — antes de PIN, sessão, KV, banco ou reconciliação de ações.
@@ -317,16 +324,38 @@ export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sq
   // do vizinho *.zevanory.api.br, que leva o cookie SameSite=Strict). Sem esses cabeçalhos (cliente antigo, curl):
   // segue para a autenticação normal. A página e o app (navegação do iframe do painel) não passam por aqui.
   if (url.pathname.startsWith("/api/admin/owner-chat/") && url.pathname !== OWNER_CHAT_PATHS.app && !sameOriginApi(request, url)) return json({ error: "forbidden" }, 403);
+  // Conexão e esquema sob demanda: nada de banco antes de saber que há PIN e cookie (ou rota de PIN).
+  let conn = null;
+  const getSql = async () => {
+    if (!sqlFactory || !env.DATABASE_URL) return null;
+    if (!conn) { conn = sqlFactory(env.DATABASE_URL); await ensureOwnerChatSchema(conn); await ensureSessionSchema(conn); }
+    return conn;
+  };
+  const sqlOrNull = async () => { try { return await getSql(); } catch { conn = null; return null; } };
+  // R1.2: sessões do formato antigo (KV) nunca valem e são apagadas (uma vez por isolate; também na retenção diária).
+  if (pinConfigured(env)) { try { await purgeLegacyKvSessions(env.ZEVANORY_PRIVATE_ARTIFACTS); } catch {} }
   // Login/saída por PIN (owner-pin.mjs): rotas próprias, com CSRF e limite de tentativas; não exigem sessão.
-  if (url.pathname === OWNER_PIN_PATHS.login) return handlePinLogin(request, env);
-  if (url.pathname === OWNER_PIN_PATHS.logout) return handlePinLogout(request, env);
+  if (url.pathname === OWNER_PIN_PATHS.login) return handlePinLogin(request, env, { sql: await sqlOrNull(), authority: sessionAuthority });
+  if (url.pathname === OWNER_PIN_PATHS.logout) return handlePinLogout(request, env, { sql: await sqlOrNull() });
   const basicOk = typeof isAdminAuthorized === "function" && isAdminAuthorized(request, env);
-  if (!basicOk && !(await hasPinSession(request, env))) {
-    // Com PIN ligado, a página mostra o formulário de PIN (sem o diálogo de usuário/senha do navegador).
-    if (pinConfigured(env) && request.method === "GET" && (url.pathname === OWNER_CHAT_PATHS.page || url.pathname === OWNER_CHAT_PATHS.app)) return new Response(PIN_PAGE, { status: 200, headers: PIN_PAGE_HEADERS });
-    if (pinConfigured(env)) return json({ error: "auth_required" }, 401);
-    return unauthorized();
+  // R1: a sessão por PIN só vale se a linha no PostgreSQL estiver válida AGORA. Erro de banco = negado.
+  let session = null;
+  if (!basicOk) {
+    const hash = pinConfigured(env) && sessionAuthority === "postgres" ? await sessionHash(request) : null;
+    const sql = hash ? await sqlOrNull() : null;
+    let valid = false;
+    if (hash && sql) { try { valid = await checkSession(sql, hash); } catch { valid = false; } }
+    if (!valid) {
+      // Com PIN ligado, a página mostra o formulário de PIN (sem o diálogo de usuário/senha do navegador).
+      if (pinConfigured(env) && request.method === "GET" && (url.pathname === OWNER_CHAT_PATHS.page || url.pathname === OWNER_CHAT_PATHS.app)) return new Response(PIN_PAGE, { status: 200, headers: PIN_PAGE_HEADERS });
+      if (pinConfigured(env)) return json({ error: "auth_required" }, 401);
+      return unauthorized();
+    }
+    session = hash;
   }
+  // R2: encerramento pendente (cookie gravado pela página ao clicar em Sair). Nada privado é entregue; só o POST de
+  // logout (com origem e CSRF) revoga. A página do app não tem dado privado: ela vê a marca e repete o logout.
+  if (session && logoutPending(request) && url.pathname !== OWNER_CHAT_PATHS.page && url.pathname !== OWNER_CHAT_PATHS.app) return json({ error: "logout_pending" }, 409);
   if (url.pathname === OWNER_CHAT_PATHS.page) return new Response(null, { status: 302, headers: { location: OWNER_CHAT_PATHS.app, "cache-control": "no-store" } });
   if (url.pathname === OWNER_CHAT_PATHS.app) {
     if (request.method !== "GET") return new Response(null, { status: 405 });
@@ -335,6 +364,9 @@ export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sq
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!kv?.get || !sqlFactory || !env.DATABASE_URL) return json({ error: "owner_chat_unavailable" }, 503);
   try {
+    const sql = await getSql();
+    // Sem linha no resultado e com sessão por PIN: confere se foi revogada/expirada no meio (então 401).
+    const lost = async () => session !== null && !(await checkSession(sql, session).catch(() => false));
     if (url.pathname === "/api/admin/owner-chat/feed") {
       if (request.method !== "GET") return new Response(null, { status: 405 });
       const seen = url.searchParams.get("v") || "";
@@ -343,27 +375,28 @@ export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sq
       let version = null;
       try { version = await kv.get(OWNER_CHAT_VERSION_KEY); } catch {}
       if (version !== null && seen && version === seen) return json({ same: true, v: version });
-      const sql = sqlFactory(env.DATABASE_URL);
-      await ensureOwnerChatSchema(sql);
       await reconcileActions(sql, kv).catch(() => null);
       // Sem cursor: as últimas FEED_LIMIT (histórico inicial). Com cursor: seq > after, em páginas de FEED_PAGE, em
       // ordem; o cursor devolvido é a última seq entregue (nunca a de uma sobreposição).
       if (after === null) {
-        const rows = (await sql.query(`/*owner-chat:feed*/ select ${ROW} from zevanory_owner_chat_messages order by seq desc limit $1`, [FEED_LIMIT])).map(toMessage).reverse();
+        // R1.1: leitura autorizada na mesma instrução (FOR SHARE na sessão).
+        const rows = (await sql.query(`/*owner-chat:feed*/ select ${ROW} from zevanory_owner_chat_messages where ($2::text is null or ${SESSION_VALID_SQL(2)}) order by seq desc limit $1`, [FEED_LIMIT, session])).map(toMessage).reverse();
+        if (!rows.length && (await lost())) return json({ error: "auth_required" }, 401);
         return json({ v: version, messages: rows, cursor: rows.length ? rows.at(-1).seq : "0", more: false });
       }
-      const page = await sql.query(`/*owner-chat:feed-after*/ select ${ROW} from zevanory_owner_chat_messages where seq > $1::bigint order by seq asc limit $2`, [after, FEED_PAGE + 1]);
+      const page = await sql.query(`/*owner-chat:feed-after*/ select ${ROW} from zevanory_owner_chat_messages where seq > $1::bigint and ($3::text is null or ${SESSION_VALID_SQL(3)}) order by seq asc limit $2`, [after, FEED_PAGE + 1, session]);
+      if (!page.length && (await lost())) return json({ error: "auth_required" }, 401);
       const rows = page.slice(0, FEED_PAGE).map(toMessage);
       return json({ v: version, messages: rows, cursor: rows.length ? rows.at(-1).seq : after, more: page.length > FEED_PAGE });
     }
     if (request.method !== "POST" || !sameOrigin(request, url)) return json({ error: "forbidden" }, 403);
     const body = await request.json().catch(() => null);
-    const sql = sqlFactory(env.DATABASE_URL);
-    await ensureOwnerChatSchema(sql);
     if (url.pathname === "/api/admin/owner-chat/message") {
       const text = typeof body?.text === "string" ? body.text.trim() : "";
       if (!text || text.length > MAX_TEXT) return json({ error: "text_invalid" }, 400);
-      const mine = await insertMessage(sql, { from: "owner", kind: "chat", text });
+      // R1.1: a mensagem do dono só é gravada se a sessão for válida na mesma instrução.
+      const mine = await insertMessage(sql, { from: "owner", kind: "chat", text, session });
+      if (!mine && session !== null) return json({ error: "auth_required" }, 401);
       const facts = await gatherFacts(env, new Date(), snapshot ? { snapshot } : {});
       const reply = await answer(env, sql, text, facts);
       const theirs = await insertMessage(sql, { from: "zevanory", kind: reply.kind || "chat", text: reply.text, action: reply.action || null });
@@ -380,10 +413,14 @@ export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sq
         on conflict (k) do update set holder = excluded.holder, since = now() where zevanory_owner_chat_action_lock.holder is null returning holder`, [id]);
       if (!locked[0]) return json({ error: "action_in_progress", messages: [] }, 409);
       const release = () => sql.query(`/*owner-chat:unlock*/ update zevanory_owner_chat_action_lock set holder = null, since = null where k = 1 and holder = $1::bigint`, [id]);
-      const claimed = await sql.query(`/*owner-chat:claim*/ update zevanory_owner_chat_messages set action_state = 'executando'
-        where id = $1::bigint and action_state = 'proposta' and action_expires_at > now() returning action_type`, [id]);
+      // R1.1: reivindicação autorizada NA MESMA instrução (FOR SHARE na sessão) e registrada com a sessão que a
+      // autorizou. Ordem com o logout: ou a reivindicação faz commit antes (o logout espera e depois informa a ação
+      // em andamento) ou o logout faz commit antes (a reivindicação não acha sessão válida e nada é executado).
+      const claimed = await sql.query(`/*owner-chat:claim*/ update zevanory_owner_chat_messages set action_state = 'executando', action_session = $2
+        where id = $1::bigint and action_state = 'proposta' and action_expires_at > now() and ($2::text is null or ${SESSION_VALID_SQL(2)}) returning action_type`, [id, session]);
       if (!claimed[0]) {
         await release();
+        if (await lost()) return json({ error: "auth_required" }, 401);
         const cur = await sql.query(`/*owner-chat:action-state*/ select action_state, action_expires_at > now() as live from zevanory_owner_chat_messages where id = $1::bigint and action_type is not null`, [id]);
         if (!cur[0]) return json({ error: "action_not_found" }, 404);
         return json({ error: cur[0].action_state === "proposta" && !cur[0].live ? "action_expired" : "action_already_used" }, cur[0].action_state === "proposta" ? 410 : 409);
@@ -430,17 +467,20 @@ header{padding:12px 16px;background:var(--card);font-weight:700;display:flex;jus
 .m{max-width:min(680px,88%);padding:10px 12px;border-radius:12px;white-space:pre-wrap;word-wrap:break-word}.owner{align-self:flex-end;background:var(--me)}.zevanory{align-self:flex-start;background:var(--zv)}
 .alerta{border-left:4px solid var(--al)}.venda{border-left:4px solid var(--ok)}.t{display:block;color:var(--mu);font-size:12px;margin-top:4px}
 button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:#2563eb;color:#fff;cursor:pointer}button:disabled{opacity:.5}
-#fim{padding:16px;display:grid;gap:10px;justify-items:start}#fim[hidden]{display:none}
+#fim{padding:16px;display:grid;gap:10px;justify-items:start}#fim[hidden],#log[hidden],form[hidden]{display:none}
 .sair{margin-left:10px;padding:6px 10px;font-size:14px;background:transparent;border:1px solid #334155}
 form{display:flex;gap:8px;padding:12px 16px;background:var(--card)}input{flex:1;font:inherit;padding:12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:var(--tx)}
 </style></head><body><header>Epaminondas · ZEVANORY <span><small id="st">conectando…</small><button id="sair" type="button" class="sair">Sair</button></span></header><main id="log" aria-live="polite"></main>
 <div id="fim" role="status" hidden><p id="fimmsg"></p><button id="retry" type="button" hidden>Tentar encerrar de novo</button></div>
 <form id="f"><input id="q" autocomplete="off" maxlength="1500" placeholder="Fale com o Epaminondas (ex.: status, vendas, o que está parado)"><button id="b">Enviar</button></form>
 <script>(()=>{const log=document.getElementById('log'),st=document.getElementById('st'),q=document.getElementById('q'),b=document.getElementById('b'),f=document.getElementById('f'),sairB=document.getElementById('sair'),fimBox=document.getElementById('fim'),fimMsg=document.getElementById('fimmsg'),retry=document.getElementById('retry');let ver='';const nodes=new Map();let ended=false,iv=0;const ctl=new AbortController();
-// CA-09.1: trava local persistente. Enquanto um Sair não tiver confirmação do servidor, recarregar a página NÃO traz a
-// conversa de volta: a página abre já encerrada e tenta encerrar de novo. Só a confirmação (ou um novo login por PIN)
-// libera. Sem armazenamento disponível, vale só a proteção da página aberta.
-const PEND='zv_owner_chat_logout_pending',pend={on:()=>{try{return localStorage.getItem(PEND)==='1'}catch{return false}},set:()=>{try{localStorage.setItem(PEND,'1')}catch{}},clear:()=>{try{localStorage.removeItem(PEND)}catch{}}};
+// R2: encerramento pendente, gravado em DOIS lugares independentes: cookie zv_owner_chat_end (o servidor o respeita: não
+// entrega nada privado, responde 409, até um logout confirmado) e localStorage. Recarregar com qualquer um deles abre a
+// página já encerrada e repete o logout. Só a confirmação do servidor (ou um novo login por PIN) apaga as marcas.
+const PEND='zv_owner_chat_logout_pending',END='zv_owner_chat_end';
+const endOn=()=>{let c=false,l=false;try{c=document.cookie.split('; ').includes(END+'=1')}catch{}try{l=localStorage.getItem(PEND)==='1'}catch{}return c||l;};
+const endMark=()=>{let c=false,l=false;try{document.cookie=END+'=1; Path=/; Max-Age=43200; Secure; SameSite=Strict';c=document.cookie.split('; ').includes(END+'=1')}catch{}try{localStorage.setItem(PEND,'1');l=localStorage.getItem(PEND)==='1'}catch{}return c||l;};
+const endClear=()=>{try{document.cookie=END+'=; Path=/; Max-Age=0; Secure; SameSite=Strict'}catch{}try{localStorage.removeItem(PEND)}catch{}};
 // Esc dentro do chat (iframe do painel): avisa SÓ a janela do painel (origem fixa); o painel confere origem e janela.
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&window.parent!==window)window.parent.postMessage({type:'zv-owner-chat:escape'},'${PANEL_ORIGIN}');});
 // Encerramento local imediato: para a consulta, cancela pedidos em andamento e apaga a conversa. Depois disso nenhuma
@@ -450,18 +490,22 @@ function encerrar(){if(ended)return;ended=true;clearInterval(iv);ctl.abort();log
 function fim(){encerrar();location.replace('/admin/proprietario');}
 const H={'content-type':'application/json','x-owner-chat':'1'};
 function render(m){const d=document.createElement('div');d.className='m '+m.from+' '+m.kind;d.textContent=m.text;
-if(m.action&&m.action.state==='proposta'&&Date.now()<m.action.expiresAt){const k=document.createElement('button');k.textContent='Confirmar';k.style.marginTop='8px';k.style.display='block';k.onclick=async()=>{k.disabled=true;let r;try{r=await fetch('/api/admin/owner-chat/action',{method:'POST',headers:H,body:JSON.stringify({id:m.id}),signal:ctl.signal});}catch{if(!ended)k.textContent='Sem conexão — vou conferir e avisar';return;}if(ended)return;if(r.status===401)return fim();const j=await r.json().catch(()=>({}));if(ended)return;(j.messages||[]).forEach(add);k.textContent=j.state==='executado'?'Executado':j.state==='incerto'?'Resultado incerto — conferindo':r.status>=500?'Sem confirmação — vou conferir e avisar':j.error==='action_in_progress'?'Outra ordem em andamento':'Não executado ('+(j.error||r.status)+')';};d.appendChild(k);}
+if(m.action&&m.action.state==='proposta'&&Date.now()<m.action.expiresAt){const k=document.createElement('button');k.textContent='Confirmar';k.style.marginTop='8px';k.style.display='block';k.onclick=async()=>{k.disabled=true;let r;try{r=await fetch('/api/admin/owner-chat/action',{method:'POST',headers:H,body:JSON.stringify({id:m.id}),signal:ctl.signal});}catch{if(!ended)k.textContent='Sem conexão — vou conferir e avisar';return;}if(ended)return;if(r.status===401)return fim();if(r.status===409)return sair();const j=await r.json().catch(()=>({}));if(ended)return;(j.messages||[]).forEach(add);k.textContent=j.state==='executado'?'Executado':j.state==='incerto'?'Resultado incerto — conferindo':r.status>=500?'Sem confirmação — vou conferir e avisar':j.error==='action_in_progress'?'Outra ordem em andamento':'Não executado ('+(j.error||r.status)+')';};d.appendChild(k);}
 const t=document.createElement('span');t.className='t';t.textContent=new Date(m.at).toLocaleString('pt-BR');d.appendChild(t);return d;}
 function add(m){if(ended||!m||nodes.has(m.id))return;const d=render(m);d.dataset.id=m.id;nodes.set(m.id,d);
 d.dataset.seq=m.seq;const after=[...log.children].find(x=>BigInt(x.dataset.seq)>BigInt(m.seq));log.insertBefore(d,after||null);log.scrollTop=log.scrollHeight;}
-let full=0,cur='';async function poll(){if(document.hidden||ended)return;const force=Date.now()-full>=${FEED_MAX_STALE_MS};const qs=new URLSearchParams();if(cur)qs.set('after',cur);if(!force&&ver)qs.set('v',ver);try{const r=await fetch('/api/admin/owner-chat/feed?'+qs,{signal:ctl.signal});if(ended)return;if(r.status===401)return fim();const j=await r.json();if(ended)return;if(r.ok){if(force)full=Date.now();if(!j.same){(j.messages||[]).forEach(add);if(/^\\d+$/.test(j.cursor||'')&&(!cur||BigInt(j.cursor)>BigInt(cur)))cur=j.cursor;}if(j.v)ver=j.v;st.textContent='ao vivo';if(j.more)setTimeout(poll,0);}else st.textContent='instável ('+(j.error||r.status)+')';}catch{if(!ended)st.textContent='sem conexão';}}
-f.onsubmit=async e=>{e.preventDefault();const text=q.value.trim();if(!text||ended)return;b.disabled=true;q.value='';try{const r=await fetch('/api/admin/owner-chat/message',{method:'POST',headers:H,body:JSON.stringify({text}),signal:ctl.signal});if(ended)return;if(r.status===401)return fim();const j=await r.json().catch(()=>({}));if(ended)return;(j.messages||[]).forEach(add);if(!r.ok)st.textContent='erro ('+(j.error||r.status)+')';}catch{if(!ended)st.textContent='sem conexão';}finally{b.disabled=false;if(!ended)q.focus();}};
+let full=0,cur='',inflight=false,shown=true,openGen=0;async function poll(){if(document.hidden||ended||!shown||inflight)return;inflight=true;const g=openGen;const force=Date.now()-full>=${FEED_MAX_STALE_MS};const qs=new URLSearchParams();if(cur)qs.set('after',cur);if(!force&&ver)qs.set('v',ver);try{const r=await fetch('/api/admin/owner-chat/feed?'+qs,{signal:ctl.signal});if(ended)return;if(r.status===401)return fim();if(r.status===409)return sair();const j=await r.json();if(ended)return;if(r.ok){if(force)full=Date.now();if(!j.same){(j.messages||[]).forEach(add);if(/^\\d+$/.test(j.cursor||'')&&(!cur||BigInt(j.cursor)>BigInt(cur)))cur=j.cursor;}if(j.v)ver=j.v;st.textContent='ao vivo';if(shown&&g===openGen)log.hidden=false;if(j.more)setTimeout(poll,0);}else st.textContent='instável ('+(j.error||r.status)+')';}catch{if(!ended)st.textContent='sem conexão';}finally{inflight=false;}}
+f.onsubmit=async e=>{e.preventDefault();const text=q.value.trim();if(!text||ended)return;b.disabled=true;q.value='';try{const r=await fetch('/api/admin/owner-chat/message',{method:'POST',headers:H,body:JSON.stringify({text}),signal:ctl.signal});if(ended)return;if(r.status===401)return fim();if(r.status===409)return sair();const j=await r.json().catch(()=>({}));if(ended)return;(j.messages||[]).forEach(add);if(!r.ok)st.textContent='erro ('+(j.error||r.status)+')';}catch{if(!ended)st.textContent='sem conexão';}finally{b.disabled=false;if(!ended)q.focus();}};
 // Sair: apaga a conversa na hora; só diz "encerrada" (e volta ao PIN) com a confirmação do servidor (HTTP 2xx e ok:true).
 // Sem confirmação (erro, 5xx, tempo esgotado, sem rede), avisa que a sessão pode continuar válida e oferece tentar de novo;
 // a conversa NÃO volta sozinha (a consulta periódica fica parada).
-async function sair(){pend.set();encerrar();fimBox.hidden=false;retry.hidden=true;fimMsg.textContent='Encerrando a sessão…';let confirmed=false;
-try{const r=await fetch('/api/admin/owner-chat/logout',{method:'POST',headers:H,signal:AbortSignal.timeout(8000)});const j=await r.json().catch(()=>({}));confirmed=r.ok&&j.ok===true;}catch{}
-if(confirmed){pend.clear();fimMsg.textContent='Sessão encerrada.';location.replace('/admin/proprietario');return;}
-fimMsg.textContent='Não foi possível confirmar o encerramento no servidor. A sessão pode continuar válida. Verifique a conexão e tente de novo.';retry.hidden=false;retry.focus();}
+async function sair(){const marked=endMark();encerrar();fimBox.hidden=false;retry.hidden=true;fimMsg.textContent='Encerrando a sessão…';let confirmed=false;let pa=null;
+try{const r=await fetch('/api/admin/owner-chat/logout',{method:'POST',headers:H,signal:AbortSignal.timeout(8000)});const j=await r.json().catch(()=>({}));confirmed=r.ok&&j.ok===true;pa=j.pending_actions;}catch{}
+if(confirmed){endClear();if(pa>0){fimMsg.textContent='Sessão encerrada. '+(pa===1?'1 ação autorizada antes do encerramento ainda está sendo concluída':pa+' ações autorizadas antes do encerramento ainda estão sendo concluídas')+'; o resultado fica registrado no histórico.';const k=document.createElement('button');k.type='button';k.id='topin';k.textContent='Ir para o PIN';k.onclick=()=>location.replace('/admin/proprietario');fimBox.appendChild(k);return;}fimMsg.textContent='Sessão encerrada.';location.replace('/admin/proprietario');return;}
+fimMsg.textContent='Não foi possível confirmar o encerramento no servidor. A sessão pode continuar válida. Verifique a conexão e tente de novo.'+(marked?'':' Este navegador não permitiu guardar o pedido de saída: se a página for recarregada antes da confirmação, a conversa pode voltar a aparecer. Sem confirmação do servidor, a sessão só termina ao expirar (até 12 h).');retry.hidden=false;retry.focus();}
 sairB.onclick=sair;retry.onclick=sair;
-if(pend.on()){sair();}else{document.addEventListener('visibilitychange',poll);poll();iv=setInterval(poll,5000);}})();</script></body></html>`;
+// M1: o painel avisa quando a janela do chat abre ou fecha (aceito só da origem do painel e da janela-mãe). Fechada: sem
+// consulta e conversa oculta. Reaberta: a sessão é validada por uma consulta ANTES de a conversa reaparecer (401 encerra,
+// 409 repete o logout); a consulta segue de onde parou e nunca corre em dobro.
+window.addEventListener('message',e=>{if(e.origin!=='${PANEL_ORIGIN}'||e.source!==window.parent||!e.data||e.data.type!=='zv-owner-chat:visibility')return;const open=e.data.open===true;if(open===shown||ended)return;shown=open;if(!open){clearInterval(iv);iv=0;log.hidden=true;st.textContent='pausado';return;}openGen++;poll();iv=setInterval(poll,5000);});
+if(endOn()){sair();}else{document.addEventListener('visibilitychange',poll);poll();iv=setInterval(poll,5000);}})();</script></body></html>`;

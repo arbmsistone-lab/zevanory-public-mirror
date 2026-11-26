@@ -2,23 +2,44 @@
 export function fakeSql() {
   const rows = []; let seq = 0; let cseq = 0; const ai = new Map(); const log = []; let clock = Date.parse("2026-11-12T23:00:00Z");
   const lock = { holder: null, since: null }; const neurons = { n: 0, fail: false }; const vstate = new Map();
+  // Sessões e tentativas de PIN (worker/owner-session.mjs), com injeção de falha por operação.
+  const sessions = new Map(); const attempts = new Map(); const sfail = { check: false, create: false, revoke: false, reserve: false, pending: false };
+  const valid = (h) => { const x = sessions.get(h); return !!x && x.revoked === null && x.expires > clock; };
   const out = (r) => ({ id: String(r.id), seq: String(r.seq ?? r.id), created_at: new Date(r.created_at).toISOString(), sender: r.sender, kind: r.kind, body: r.body, action_type: r.action_type, action_expires_at: r.action_expires_at ? new Date(r.action_expires_at).toISOString() : null, action_state: r.action_state });
-  return { rows, log, lock, neurons, vstate, tick: (ms) => { clock += ms; }, query: async (text, p = []) => {
+  return { rows, log, lock, neurons, vstate, sessions, attempts, sfail, valid, tick: (ms) => { clock += ms; }, query: async (text, p = []) => {
     const tag = (/\/\*owner-chat:([a-z-]+)\*\//.exec(text) || [])[1] || ((/\/\*vigia:([a-z-]+)\*\//.exec(text) || [])[1] ? "vigia-" + /\/\*vigia:([a-z-]+)\*\//.exec(text)[1] : null) || (/\/\*chat:neurons\*\//.test(text) ? "neurons" : /^\s*(create|alter)\b/i.test(text) ? "ddl" : "?");
     log.push(tag);
     if (tag === "ddl") return [];
+    if (tag === "session-check") { if (sfail.check) throw new Error("db"); return [{ n: valid(p[0]) ? 1 : 0 }]; }
+    if (tag === "session-create") { if (sfail.create) throw new Error("db"); sessions.set(p[0], { expires: clock + p[1] * 1000, revoked: null }); return [{ ok: 1 }]; }
+    if (tag === "session-revoke") { if (sfail.revoke) throw new Error("db"); const x = sessions.get(p[0]); if (x && x.revoked === null) x.revoked = clock; return []; }
+    if (tag === "session-pending") { if (sfail.pending) throw new Error("db"); return [{ n: rows.filter((r) => r.action_session === p[0] && ["executando", "incerto"].includes(r.action_state)).length }]; }
+    if (tag === "pin-reserve") {
+      if (sfail.reserve) throw new Error("db");
+      const ik = "ip:" + p[0]; const gk = "global:" + new Date(clock).toISOString().slice(0, 13);
+      const i = attempts.get(ik); const reset = !i || i.last <= clock - p[1] * 1000;
+      const ni = reset ? { n: 1, last: clock } : { n: i.n + 1, last: i.n >= p[2] ? i.last : clock }; attempts.set(ik, ni);
+      const g = attempts.get(gk); const ng = { n: (g?.n || 0) + 1, last: clock }; attempts.set(gk, ng);
+      return [{ ip_n: ni.n, g_n: ng.n, g_k: gk.slice(7) }];
+    }
+    if (tag === "pin-release") { for (const k of ["ip:" + p[0], "global:" + p[1]]) { const x = attempts.get(k); if (x) x.n = Math.max(0, x.n - 1); } return []; }
+    if (tag === "retention-sessions") { let n = 0; for (const [h, x] of sessions) if (x.expires < clock - 7 * 86400000) { sessions.delete(h); n++; } return [{ n }]; }
+    if (tag === "retention-attempts") { let n = 0; for (const [k, x] of attempts) if (x.last < clock - 2 * 86400000) { attempts.delete(k); n++; } return [{ n }]; }
     if (tag === "insert") {
+      if (p[6] != null && !valid(p[6])) return [];
       if (p[5] !== null && rows.some((r) => r.dedupe_key === p[5])) { seq++; cseq++; return []; }
       const r = { id: ++seq, seq: ++cseq, created_at: clock, sender: p[0], kind: p[1], body: p[2], action_type: p[3], action_expires_at: p[3] ? clock + p[4] * 1000 : null, action_state: p[3] ? "proposta" : null, dedupe_key: p[5] };
       rows.push(r); return [out(r)];
     }
+    if (tag === "feed" && p[1] != null && !valid(p[1])) return [];
+    if (tag === "feed-after" && p[2] != null && !valid(p[2])) return [];
     if (tag === "feed") return rows.slice().sort((a, b) => (b.seq ?? b.id) - (a.seq ?? a.id)).slice(0, p[0]).map(out);
     if (tag === "feed-after") return rows.filter((r) => (r.seq ?? r.id) > Number(p[0])).sort((a, b) => (a.seq ?? a.id) - (b.seq ?? b.id)).slice(0, p[1]).map(out);
     if (tag === "lock") { if (lock.holder !== null) return []; lock.holder = String(p[0]); lock.since = clock; return [{ holder: lock.holder }]; }
     if (tag === "unlock") { if (lock.holder === String(p[0])) { lock.holder = null; lock.since = null; } return []; }
     if (tag === "lock-read") return lock.holder === null ? [] : [{ holder: lock.holder, age: Math.floor((clock - lock.since) / 1000) }];
     if (tag === "neurons") { if (neurons.fail) throw new Error("db"); if (neurons.n + p[1] > p[2]) return []; neurons.n += p[1]; return [{ n: neurons.n }]; }
-    if (tag === "claim") { const r = rows.find((x) => String(x.id) === p[0] && x.action_state === "proposta" && x.action_expires_at > clock); if (!r) return []; r.action_state = "executando"; return [{ action_type: r.action_type }]; }
+    if (tag === "claim") { if (p[1] != null && !valid(p[1])) return []; const r = rows.find((x) => String(x.id) === p[0] && x.action_state === "proposta" && x.action_expires_at > clock); if (!r) return []; r.action_state = "executando"; r.action_session = p[1] ?? null; return [{ action_type: r.action_type }]; }
     if (tag === "action-state") { const r = rows.find((x) => String(x.id) === p[0] && x.action_type); return r ? [{ action_state: r.action_state, action_type: r.action_type, live: r.action_expires_at > clock }] : []; }
     if (tag === "settle") { const r = rows.find((x) => String(x.id) === p[0] && ["executando", "incerto"].includes(x.action_state)); if (r) r.action_state = p[1]; return []; }
     if (tag === "ai-reserve") { const n = ai.get(p[0]) || 0; if (n >= p[1]) return []; ai.set(p[0], n + 1); return [{ n: n + 1 }]; }

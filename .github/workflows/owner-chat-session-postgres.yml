@@ -1,0 +1,82 @@
+name: owner-chat-session-postgres
+
+# Chat do proprietário — sessão por PIN no PostgreSQL 16 REAL descartável (R1, R1.1, O1, R1.2; 26/11/2026).
+# Handler real do Worker; cada consulta é uma conexão própria (como o driver HTTP do Neon); transações seguradas de
+# verdade para provar a ordem revogação × leitura/envio/ação; corrida real logout × operações; tentativas de PIN
+# simultâneas; contraprovas com cópias mutantes (todas precisam ser DETECTADAS); prova de rollback contra o código de
+# produção (813870c2). Só pull_request e dispatch manual, sem segredo, sem rede além do checkout e da imagem do serviço.
+# Contagem EXATA: alterar os números no mesmo PR que muda os testes.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/owner-chat-session-postgres.yml"
+      - "worker/owner-chat.mjs"
+      - "worker/owner-pin.mjs"
+      - "worker/owner-session.mjs"
+      - "tests/integration/owner-chat-session-postgres.test.mjs"
+      - "tests/integration/owner-chat-rollback-postgres.test.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: owner-chat-session-postgres-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  owner-chat-session-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Versão do servidor (precisa ser 16)
+        run: |
+          set -euo pipefail
+          v="$(psql -h localhost -U postgres -tAc 'show server_version_num')"
+          echo "::notice title=POSTGRES::server_version_num=$v"
+          [ "${v:0:2}" = "16" ] || { echo "::error::PostgreSQL diferente de 16 ($v)"; exit 1; }
+      - name: Sessão, concorrência, O1 e contraprovas (contagem exata, sem skip)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/owner-chat-session-postgres.test.mjs 2>&1 | grep -v '"event":"owner_chat_pin_failed"' | tee s.txt
+          echo "::notice title=COUNTS_SESSION::$(grep -E '^# (tests|pass|fail|skipped|todo|cancelled) ' s.txt | paste -sd' ' -)"
+          echo "::notice title=RACE::$(grep -oE 'OWNER_CHAT_PG_RACE .*' s.txt)"
+          grep -qx "# tests 8" s.txt && grep -qx "# pass 8" s.txt && grep -qx "# skipped 0" s.txt && grep -qx "# todo 0" s.txt && grep -qx "# fail 0" s.txt && grep -qx "# cancelled 0" s.txt
+          test "$(grep -c '^# OWNER_CHAT_PG_COUNTERPROOF .*=DETECTED$' s.txt)" = "6"
+      - name: Rollback seguro (R1.2) contra o código de produção 813870c2 (contagem exata)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+          PROD_WORKER_SHA: 813870c2
+        run: |
+          set -eo pipefail
+          node --test tests/integration/owner-chat-rollback-postgres.test.mjs 2>&1 | grep -v '"event":"owner_chat_pin_failed"' | tee r.txt
+          echo "::notice title=COUNTS_ROLLBACK::$(grep -E '^# (tests|pass|fail|skipped|todo|cancelled) ' r.txt | paste -sd' ' -)"
+          grep -qx "# tests 2" r.txt && grep -qx "# pass 2" r.txt && grep -qx "# fail 0" r.txt && grep -qx "# skipped 0" r.txt && grep -qx "# cancelled 0" r.txt && grep -q "a-sem-purga=DETECTED" r.txt
+      - name: Evidência
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: owner-chat-session-postgres
+          path: |
+            s.txt
+            r.txt
+          retention-days: 90
