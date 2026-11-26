@@ -28,7 +28,7 @@ MUTANTS = [
      'assert h.get("release")==os.environ["GITHUB_SHA"], h\n          assert "ZEVANORY SALES" in page',
      'assert "ZEVANORY SALES" in page'),
     ("central rollback removed", ".github/workflows/central-production-deploy.yml",
-     "npx --yes wrangler@4.143.0 rollback --name zevanory", "echo skip"),
+     'npx --yes wrangler@4.143.0 rollback "$OWNER_CHAT_ROLLBACK_ID" --name zevanory', "echo skip"),
     ("sales rollback no longer fails the run", ".github/workflows/zevanory-sales-public-release.yml",
      'manual recovery required"\n          fi\n          exit 1', 'manual recovery required"\n          fi\n          exit 0'),
     ("certification no longer chained to sales deploy", ".github/workflows/portfolio-six-target-exact-cert.yml",

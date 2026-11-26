@@ -48,6 +48,7 @@ import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
 import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mjs";
+import { OWNER_CHAT_RELEASE_PHASE } from "./owner-chat-release.mjs";
 import { handleOwnerChat, runOwnerChatSentinel, runOwnerChatRetention, isOwnerChatPath } from "./owner-chat.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { runSupportEvalIfDue } from "./support-eval.mjs";
@@ -135,7 +136,7 @@ const wrapped = {
       if(p===ABANDONO_DRAIN_PATH)return handleAbandonmentDrainRequest(request,normalized);
       if(p===ABANDONO_RETENTION_PATH)return handleAbandonmentRetentionRequest(request,normalized); }
     // Chat do Proprietário: autenticação ANTES de qualquer KV/banco (NC-1030-07), antes do interruptor de vendas.
-    if (isOwnerChatPath(new URL(request.url).pathname)) return handleOwnerChat(request, normalized, { isAdminAuthorized, sqlFactory: whatsappProofDatabase });
+    if (isOwnerChatPath(new URL(request.url).pathname)) return handleOwnerChat(request, normalized, { isAdminAuthorized, sqlFactory: whatsappProofDatabase, sessionAuthority: OWNER_CHAT_RELEASE_PHASE });
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
     // R139: chat stays OFF without SITE_CHAT_ENABLED=true; internal SELF drain R138 runs before this.

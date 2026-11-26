@@ -95,6 +95,19 @@ test("tabelas de credencial saem ANTES da numeração: a atribuição das elegí
   }
 });
 
+test("segurança efêmera do chat do proprietário: sessões e tentativas de PIN ficam fora do plano (nunca copiadas, nunca restauradas)", async () => {
+  const eph = ["zevanory_owner_chat_pin_attempts", "zevanory_owner_chat_sessions"];
+  const base = tables(40);
+  const ref = await computePlan({ sql: fakeSql(base), env: { P20_BACKUP_KEY: KEY }, day: DAY });
+  const p = await computePlan({ sql: fakeSql([...base, ...eph, "zevanory_owner_chat_messages"].sort()), env: { P20_BACKUP_KEY: KEY }, day: DAY });
+  for (const t of eph) { assert.ok(!p.plan.eligible.includes(t), t + " não pode entrar no backup"); assert.ok(p.plan.excluded.includes(t), t + " fora por política"); }
+  assert.ok(p.plan.eligible.includes("zevanory_owner_chat_messages"), "o histórico do chat continua no backup");
+  assert.deepEqual(p.plan.eligible.filter((t) => t !== "zevanory_owner_chat_messages"), ref.plan.eligible, "nada mais muda no plano");
+  // Só os nomes exatos: outra tabela parecida continua elegível (a regra não vira um filtro amplo).
+  const q = await computePlan({ sql: fakeSql([...base, "zevanory_owner_chat_sessions_hist", "x_zevanory_owner_chat_sessions"].sort()), env: { P20_BACKUP_KEY: KEY }, day: DAY });
+  assert.ok(q.plan.eligible.includes("zevanory_owner_chat_sessions_hist") && q.plan.eligible.includes("x_zevanory_owner_chat_sessions"));
+});
+
 test("capacidade: 180 elegíveis = 6 partes; 181 = capacity_exceeded e nenhum plano", async () => {
   const ok = await computePlan({ sql: fakeSql(tables(180)), env: { P20_BACKUP_KEY: KEY }, day: DAY });
   assert.equal(ok.plan.parts, 6);

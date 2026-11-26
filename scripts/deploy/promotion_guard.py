@@ -95,34 +95,38 @@ def cloudflare_sha(script: str | None, fetch=_get) -> str | None:
     return observe_cloudflare(script, fetch)[1]
 
 
-def observe_cloudflare(script: str | None, fetch=_get) -> tuple[str, str | None]:
+def observe_cloudflare_version(script: str | None, fetch=_get) -> tuple[str, str | None, str | None]:
     token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
     account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
     if not script or not token or not account:
-        return UNREACHABLE, None
+        return UNREACHABLE, None, None
     base = f"https://api.cloudflare.com/client/v4/accounts/{account}/workers/scripts/{script}"
     auth = {"Authorization": f"Bearer {token}"}
     try:
         listing = fetch(base + "/deployments", auth)
         if listing.get("success") is False:
-            return UNREACHABLE, None
+            return UNREACHABLE, None, None
         deployments = (listing.get("result") or {}).get("deployments") or []
         if not deployments:
-            return ANSWERED, None
+            return ANSWERED, None, None
         versions = deployments[0].get("versions") or []
         full = [v for v in versions if int(v.get("percentage") or 0) == 100]
         if len(full) != 1:
-            return ANSWERED, None  # gradual rollout: not a single effective version
+            return ANSWERED, None, None  # gradual rollout: not a single effective version
         detail = fetch(f"{base}/versions/{full[0].get('version_id')}", auth)
         if detail.get("success") is False:
-            return UNREACHABLE, None
+            return UNREACHABLE, None, None
         version = detail.get("result") or {}
         annotations = (version.get("metadata") or {}).get("annotations") or version.get("annotations") or {}
         sha = norm(annotations.get("workers/tag"))
-        return (OK, sha) if sha else (ANSWERED, None)  # active version without our tag
+        return (OK, sha, full[0].get("version_id")) if sha else (ANSWERED, None, None)  # active version without our tag
     except Exception:
-        return UNREACHABLE, None  # API/network/credential failure: the observer failed
+        return UNREACHABLE, None, None  # API/network/credential failure: the observer failed
 
+
+def observe_cloudflare(script: str | None, fetch=_get) -> tuple[str, str | None]:
+    status, sha, _ = observe_cloudflare_version(script, fetch)
+    return status, sha
 
 def is_ancestor(older: str, newer: str, repo: str) -> bool:
     return subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", older, newer],
