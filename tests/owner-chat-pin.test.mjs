@@ -131,11 +131,46 @@ test("chat público do site não é injetado nas páginas /admin/ (tela de PIN),
   assert.match(await pub.text(), /site-chat\.js/);
 });
 
-test("E3: página do chat tem 'Sair' (logout com CSRF) e, em qualquer 401, apaga a conversa do DOM e volta à tela de PIN", () => {
+test("E3/E3b: página do chat — Sair com confirmação do servidor, 401 encerra, respostas atrasadas não desenham, Esc avisa o painel", () => {
   const s = chat.OWNER_CHAT_PAGE; const js = s.slice(s.indexOf("<script>") + 8, s.lastIndexOf("</script>"));
   assert.match(s, /<button id="sair" type="button" class="sair">Sair<\/button>/);
-  assert.match(js, /fetch\('\/api\/admin\/owner-chat\/logout',\{method:'POST',headers:H\}\)/);
-  assert.match(js, /function fim\(\)\{if\(ended\)return;ended=true;clearInterval\(iv\);log\.replaceChildren\(\);nodes\.clear\(\);q\.value='';location\.replace\('\/admin\/proprietario'\);\}/);
-  for (const path of ["feed", "message", "action"]) assert.match(js, new RegExp("fetch\\('/api/admin/owner-chat/" + path + "[^;]*;if\\(r\\.status===401\\)return fim\\(\\);"), path);
+  assert.match(s, /<div id="fim" role="status" hidden><p id="fimmsg"><\/p><button id="retry" type="button" hidden>/);
+  // CA-08: encerramento local aborta pedidos e bloqueia o desenho.
+  assert.match(js, /function encerrar\(\)\{if\(ended\)return;ended=true;clearInterval\(iv\);ctl\.abort\(\);log\.replaceChildren\(\);nodes\.clear\(\);/);
+  assert.match(js, /function add\(m\)\{if\(ended\|\|!m\|\|nodes\.has\(m\.id\)\)return;/);
+  for (const path of ["feed", "message", "action"]) {
+    assert.match(js, new RegExp("fetch\\('/api/admin/owner-chat/" + path + "[^;]*signal:ctl\\.signal\\}\\);"), "abortável: " + path);
+    assert.match(js, new RegExp("fetch\\('/api/admin/owner-chat/" + path + "[^]*?if\\(r\\.status===401\\)return fim\\(\\);"), "401 encerra: " + path);
+  }
+  // CA-09: só "encerrada" com 2xx e ok:true; caso contrário, aviso e nova tentativa, sem voltar a consultar.
+  assert.match(js, /confirmed=r\.ok&&j\.ok===true;/);
+  assert.match(js, /signal:AbortSignal\.timeout\(8000\)/);
+  assert.match(js, /if\(confirmed\)\{fimMsg\.textContent='Sessão encerrada\.';location\.replace\('\/admin\/proprietario'\);return;\}/);
+  assert.match(js, /A sessão pode continuar válida/);
+  // CA-10: Esc avisa só a origem do painel.
+  assert.match(js, /window\.parent\.postMessage\(\{type:'zv-owner-chat:escape'\},'https:\/\/controle\.zevanory\.api\.br'\)/);
+  assert.match(pin.PIN_PAGE, /window\.parent\.postMessage\(\{type:"zv-owner-chat:escape"\},"https:\/\/controle\.zevanory\.api\.br"\)/);
   assert.doesNotThrow(() => new Function(js));
+});
+
+test("E3b/CA-11: API do chat recusa outra origem ANTES de PIN, sessão, KV ou banco; mesma origem e ausência de Origin seguem", async () => {
+  let sqlCalls = 0; const kv = memKv();
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "x", OWNER_CHAT_PIN: "482915" };
+  const deps = { isAdminAuthorized: (r) => r.headers.get("authorization") === "Basic ok", sqlFactory: () => { sqlCalls++; return fakeSql(); }, snapshot: async () => ({ day: "2026-11-26", today: [] }) };
+  const call = (path, headers = {}, method = "GET", body) => chat.handleOwnerChat(new Request(ORIGIN + path, { method, headers, body }), env, deps);
+  for (const [path, method] of [["/api/admin/owner-chat/feed", "GET"], ["/api/admin/owner-chat/message", "POST"], ["/api/admin/owner-chat/action", "POST"], ["/api/admin/owner-chat/pin", "POST"], ["/api/admin/owner-chat/logout", "POST"], ["/api/admin/owner-chat/feed", "OPTIONS"]]) {
+    for (const h of [{ origin: "https://outro.zevanory.api.br" }, { origin: "https://evil.example.test" }, { "sec-fetch-site": "same-site" }, { "sec-fetch-site": "cross-site" }, { origin: "null" }]) {
+      const r = await call(path, { authorization: "Basic ok", "x-owner-chat": "1", "content-type": "application/json", ...h }, method, method === "POST" ? "{}" : undefined);
+      assert.equal(r.status, 403, path + " " + JSON.stringify(h)); assert.deepEqual(await r.json(), { error: "forbidden" });
+    }
+  }
+  assert.equal(kv.reads, 0, "nenhuma leitura de KV"); assert.equal(sqlCalls, 0, "nenhum acesso ao banco");
+  // Legítimos: mesma origem, sem Origin (cliente antigo) e navegação direta (none) seguem para a autenticação normal.
+  assert.equal((await call("/api/admin/owner-chat/feed", { authorization: "Basic ok", "sec-fetch-site": "same-origin" })).status, 200);
+  assert.equal((await call("/api/admin/owner-chat/feed", { authorization: "Basic ok" })).status, 200);
+  assert.equal((await call("/api/admin/owner-chat/feed", { authorization: "Basic ok", "sec-fetch-site": "none" })).status, 200);
+  assert.equal((await call("/api/admin/owner-chat/feed", { origin: ORIGIN, "sec-fetch-site": "same-origin" })).status, 401, "mesma origem sem sessão continua 401");
+  // A página e o app (navegação do iframe do painel, same-site) não são bloqueados por esta regra.
+  assert.equal((await call("/admin/proprietario", { "sec-fetch-site": "same-site" })).status, 200);
+  assert.equal((await call("/api/admin/owner-chat/app", { "sec-fetch-site": "same-site" })).status, 200);
 });

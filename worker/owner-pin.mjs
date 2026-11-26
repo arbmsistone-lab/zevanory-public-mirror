@@ -115,6 +115,8 @@ button{margin-top:14px;width:100%;padding:12px;border:0;border-radius:10px;backg
 <button id="b" type="button">Entrar</button><div id="m" role="status"></div></main>
 <script>
 const p=document.getElementById("p"),b=document.getElementById("b"),m=document.getElementById("m");
+// Esc no PIN dentro do painel: avisa só a janela do painel (origem fixa); o painel confere origem e janela.
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&window.parent!==window)window.parent.postMessage({type:"zv-owner-chat:escape"},"https://controle.zevanory.api.br");});
 p.addEventListener("input",()=>{p.value=p.value.replace(/\\D/g,"").slice(0,6);if(p.value.length===6)go();});
 p.addEventListener("keydown",e=>{if(e.key==="Enter")go();});b.addEventListener("click",go);
 async function go(){if(!/^\\d{6}$/.test(p.value)){m.textContent="O PIN tem 6 números.";return;}b.disabled=true;m.textContent="";

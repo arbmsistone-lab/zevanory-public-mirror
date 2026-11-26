@@ -32,6 +32,8 @@ import { runIncidents } from "./vigia-incidents.mjs";
 export const OWNER_CHAT_VERSION_KEY = "zpc:owner-chat:versao:v1";
 export const OWNER_CHAT_HINT_PREFIX = "zpc:owner-chat:avisados:";
 export const OWNER_CHAT_PATHS = Object.freeze({ page: "/admin/proprietario", app: "/api/admin/owner-chat/app" });
+// Única origem que pode enquadrar o chat e receber o aviso de Esc (postMessage).
+export const PANEL_ORIGIN = "https://controle.zevanory.api.br";
 export const AI_DAILY_LIMIT = 40;
 const MAX_TEXT = 1500, ACTION_TTL_SECONDS = 600, FEED_LIMIT = 100, FEED_PAGE = 500, RECONCILE_AFTER_S = 90;
 export const EXPECTED_HOUR = Object.freeze({ blog: 9, bluesky: 19 });
@@ -297,6 +299,12 @@ export async function reconcileActions(sql, kv) {
 }
 
 // ---------- HTTP ----------
+function sameOriginApi(request, url) {
+  const origin = request.headers.get("origin");
+  if (origin !== null && origin !== url.origin) return false;
+  const site = request.headers.get("sec-fetch-site");
+  return site === null || site === "same-origin" || site === "none";
+}
 function sameOrigin(request, url) { return request.headers.get("origin") === url.origin && request.headers.get("x-owner-chat") === "1"; }
 const unauthorized = () => new Response("autenticação necessária", { status: 401, headers: { "www-authenticate": 'Basic realm="ZEVANORY proprietario", charset="UTF-8"', "cache-control": "no-store" } });
 export const isOwnerChatPath = (pathname) => pathname === OWNER_CHAT_PATHS.page || pathname.startsWith("/api/admin/owner-chat/");
@@ -304,6 +312,11 @@ export const isOwnerChatPath = (pathname) => pathname === OWNER_CHAT_PATHS.page 
 export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sqlFactory, snapshot } = {}) {
   const url = new URL(request.url);
   if (!isOwnerChatPath(url.pathname)) return null;
+  // CA-11: a API do chat só atende a própria origem — antes de PIN, sessão, KV, banco ou reconciliação de ações.
+  // Origin presente e diferente => 403. Sec-Fetch-Site presente e diferente de same-origin/none => 403 (cobre o GET
+  // do vizinho *.zevanory.api.br, que leva o cookie SameSite=Strict). Sem esses cabeçalhos (cliente antigo, curl):
+  // segue para a autenticação normal. A página e o app (navegação do iframe do painel) não passam por aqui.
+  if (url.pathname.startsWith("/api/admin/owner-chat/") && url.pathname !== OWNER_CHAT_PATHS.app && !sameOriginApi(request, url)) return json({ error: "forbidden" }, 403);
   // Login/saída por PIN (owner-pin.mjs): rotas próprias, com CSRF e limite de tentativas; não exigem sessão.
   if (url.pathname === OWNER_PIN_PATHS.login) return handlePinLogin(request, env);
   if (url.pathname === OWNER_PIN_PATHS.logout) return handlePinLogout(request, env);
@@ -417,20 +430,34 @@ header{padding:12px 16px;background:var(--card);font-weight:700;display:flex;jus
 .m{max-width:min(680px,88%);padding:10px 12px;border-radius:12px;white-space:pre-wrap;word-wrap:break-word}.owner{align-self:flex-end;background:var(--me)}.zevanory{align-self:flex-start;background:var(--zv)}
 .alerta{border-left:4px solid var(--al)}.venda{border-left:4px solid var(--ok)}.t{display:block;color:var(--mu);font-size:12px;margin-top:4px}
 button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:#2563eb;color:#fff;cursor:pointer}button:disabled{opacity:.5}
+#fim{padding:16px;display:grid;gap:10px;justify-items:start}#fim[hidden]{display:none}
 .sair{margin-left:10px;padding:6px 10px;font-size:14px;background:transparent;border:1px solid #334155}
 form{display:flex;gap:8px;padding:12px 16px;background:var(--card)}input{flex:1;font:inherit;padding:12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:var(--tx)}
 </style></head><body><header>Epaminondas · ZEVANORY <span><small id="st">conectando…</small><button id="sair" type="button" class="sair">Sair</button></span></header><main id="log" aria-live="polite"></main>
+<div id="fim" role="status" hidden><p id="fimmsg"></p><button id="retry" type="button" hidden>Tentar encerrar de novo</button></div>
 <form id="f"><input id="q" autocomplete="off" maxlength="1500" placeholder="Fale com o Epaminondas (ex.: status, vendas, o que está parado)"><button id="b">Enviar</button></form>
-<script>(()=>{const log=document.getElementById('log'),st=document.getElementById('st'),q=document.getElementById('q'),b=document.getElementById('b');let ver='';const nodes=new Map();let ended=false,iv=0;
-// Sessão encerrada (sair, expiração ou revogação): apaga a conversa do DOM antes de voltar para a tela de PIN.
-function fim(){if(ended)return;ended=true;clearInterval(iv);log.replaceChildren();nodes.clear();q.value='';location.replace('/admin/proprietario');}
+<script>(()=>{const log=document.getElementById('log'),st=document.getElementById('st'),q=document.getElementById('q'),b=document.getElementById('b'),f=document.getElementById('f'),sairB=document.getElementById('sair'),fimBox=document.getElementById('fim'),fimMsg=document.getElementById('fimmsg'),retry=document.getElementById('retry');let ver='';const nodes=new Map();let ended=false,iv=0;const ctl=new AbortController();
+// Esc dentro do chat (iframe do painel): avisa SÓ a janela do painel (origem fixa); o painel confere origem e janela.
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&window.parent!==window)window.parent.postMessage({type:'zv-owner-chat:escape'},'${PANEL_ORIGIN}');});
+// Encerramento local imediato: para a consulta, cancela pedidos em andamento e apaga a conversa. Depois disso nenhuma
+// resposta atrasada é desenhada (add e os tratadores conferem 'ended').
+function encerrar(){if(ended)return;ended=true;clearInterval(iv);ctl.abort();log.replaceChildren();nodes.clear();q.value='';f.hidden=true;sairB.hidden=true;}
+// Sessão já recusada pelo servidor (401: expirada ou revogada): volta para a tela de PIN.
+function fim(){encerrar();location.replace('/admin/proprietario');}
 const H={'content-type':'application/json','x-owner-chat':'1'};
 function render(m){const d=document.createElement('div');d.className='m '+m.from+' '+m.kind;d.textContent=m.text;
-if(m.action&&m.action.state==='proposta'&&Date.now()<m.action.expiresAt){const k=document.createElement('button');k.textContent='Confirmar';k.style.marginTop='8px';k.style.display='block';k.onclick=async()=>{k.disabled=true;const r=await fetch('/api/admin/owner-chat/action',{method:'POST',headers:H,body:JSON.stringify({id:m.id})});if(r.status===401)return fim();const j=await r.json().catch(()=>({}));(j.messages||[]).forEach(add);k.textContent=j.state==='executado'?'Executado':j.state==='incerto'?'Resultado incerto — conferindo':r.status>=500?'Sem confirmação — vou conferir e avisar':j.error==='action_in_progress'?'Outra ordem em andamento':'Não executado ('+(j.error||r.status)+')';};d.appendChild(k);}
+if(m.action&&m.action.state==='proposta'&&Date.now()<m.action.expiresAt){const k=document.createElement('button');k.textContent='Confirmar';k.style.marginTop='8px';k.style.display='block';k.onclick=async()=>{k.disabled=true;let r;try{r=await fetch('/api/admin/owner-chat/action',{method:'POST',headers:H,body:JSON.stringify({id:m.id}),signal:ctl.signal});}catch{if(!ended)k.textContent='Sem conexão — vou conferir e avisar';return;}if(ended)return;if(r.status===401)return fim();const j=await r.json().catch(()=>({}));if(ended)return;(j.messages||[]).forEach(add);k.textContent=j.state==='executado'?'Executado':j.state==='incerto'?'Resultado incerto — conferindo':r.status>=500?'Sem confirmação — vou conferir e avisar':j.error==='action_in_progress'?'Outra ordem em andamento':'Não executado ('+(j.error||r.status)+')';};d.appendChild(k);}
 const t=document.createElement('span');t.className='t';t.textContent=new Date(m.at).toLocaleString('pt-BR');d.appendChild(t);return d;}
-function add(m){if(!m||nodes.has(m.id))return;const d=render(m);d.dataset.id=m.id;nodes.set(m.id,d);
+function add(m){if(ended||!m||nodes.has(m.id))return;const d=render(m);d.dataset.id=m.id;nodes.set(m.id,d);
 d.dataset.seq=m.seq;const after=[...log.children].find(x=>BigInt(x.dataset.seq)>BigInt(m.seq));log.insertBefore(d,after||null);log.scrollTop=log.scrollHeight;}
-let full=0,cur='';async function poll(){if(document.hidden||ended)return;const force=Date.now()-full>=${FEED_MAX_STALE_MS};const qs=new URLSearchParams();if(cur)qs.set('after',cur);if(!force&&ver)qs.set('v',ver);try{const r=await fetch('/api/admin/owner-chat/feed?'+qs);if(r.status===401)return fim();const j=await r.json();if(r.ok){if(force)full=Date.now();if(!j.same){(j.messages||[]).forEach(add);if(/^\\d+$/.test(j.cursor||'')&&(!cur||BigInt(j.cursor)>BigInt(cur)))cur=j.cursor;}if(j.v)ver=j.v;st.textContent='ao vivo';if(j.more)setTimeout(poll,0);}else st.textContent='instável ('+(j.error||r.status)+')';}catch{st.textContent='sem conexão';}}
-document.getElementById('f').onsubmit=async e=>{e.preventDefault();const text=q.value.trim();if(!text)return;b.disabled=true;q.value='';try{const r=await fetch('/api/admin/owner-chat/message',{method:'POST',headers:H,body:JSON.stringify({text})});if(r.status===401)return fim();const j=await r.json().catch(()=>({}));(j.messages||[]).forEach(add);if(!r.ok)st.textContent='erro ('+(j.error||r.status)+')';}finally{b.disabled=false;q.focus();}};
-document.getElementById('sair').onclick=async()=>{try{await fetch('/api/admin/owner-chat/logout',{method:'POST',headers:H});}catch{}fim();};
+let full=0,cur='';async function poll(){if(document.hidden||ended)return;const force=Date.now()-full>=${FEED_MAX_STALE_MS};const qs=new URLSearchParams();if(cur)qs.set('after',cur);if(!force&&ver)qs.set('v',ver);try{const r=await fetch('/api/admin/owner-chat/feed?'+qs,{signal:ctl.signal});if(ended)return;if(r.status===401)return fim();const j=await r.json();if(ended)return;if(r.ok){if(force)full=Date.now();if(!j.same){(j.messages||[]).forEach(add);if(/^\\d+$/.test(j.cursor||'')&&(!cur||BigInt(j.cursor)>BigInt(cur)))cur=j.cursor;}if(j.v)ver=j.v;st.textContent='ao vivo';if(j.more)setTimeout(poll,0);}else st.textContent='instável ('+(j.error||r.status)+')';}catch{if(!ended)st.textContent='sem conexão';}}
+f.onsubmit=async e=>{e.preventDefault();const text=q.value.trim();if(!text||ended)return;b.disabled=true;q.value='';try{const r=await fetch('/api/admin/owner-chat/message',{method:'POST',headers:H,body:JSON.stringify({text}),signal:ctl.signal});if(ended)return;if(r.status===401)return fim();const j=await r.json().catch(()=>({}));if(ended)return;(j.messages||[]).forEach(add);if(!r.ok)st.textContent='erro ('+(j.error||r.status)+')';}catch{if(!ended)st.textContent='sem conexão';}finally{b.disabled=false;if(!ended)q.focus();}};
+// Sair: apaga a conversa na hora; só diz "encerrada" (e volta ao PIN) com a confirmação do servidor (HTTP 2xx e ok:true).
+// Sem confirmação (erro, 5xx, tempo esgotado, sem rede), avisa que a sessão pode continuar válida e oferece tentar de novo;
+// a conversa NÃO volta sozinha (a consulta periódica fica parada).
+async function sair(){encerrar();fimBox.hidden=false;retry.hidden=true;fimMsg.textContent='Encerrando a sessão…';let confirmed=false;
+try{const r=await fetch('/api/admin/owner-chat/logout',{method:'POST',headers:H,signal:AbortSignal.timeout(8000)});const j=await r.json().catch(()=>({}));confirmed=r.ok&&j.ok===true;}catch{}
+if(confirmed){fimMsg.textContent='Sessão encerrada.';location.replace('/admin/proprietario');return;}
+fimMsg.textContent='Não foi possível confirmar o encerramento no servidor. A sessão pode continuar válida. Verifique a conexão e tente de novo.';retry.hidden=false;retry.focus();}
+sairB.onclick=sair;retry.onclick=sair;
 document.addEventListener('visibilitychange',poll);poll();iv=setInterval(poll,5000);})();</script></body></html>`;

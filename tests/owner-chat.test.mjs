@@ -336,7 +336,11 @@ test("mutantes morrem", async () => {
   await mutant("sem-auth", "if (!basicOk && !(await hasPinSession(request, env))) {", "if (false) {", async (m) =>
     (await H(m).call(new Request(ORIGIN + "/api/admin/owner-chat/feed"))).status === 401);
   await mutant("sem-csrf", "if (request.method !== \"POST\" || !sameOrigin(request, url))", "if (request.method !== \"POST\")", async (m) =>
-    (await H(m).call(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "status" }, headers: { origin: "https://evil.example" } }))).status === 403);
+    // Origem estrangeira agora cai antes, no CA-11 (mutante próprio abaixo); aqui o que só o CSRF garante: mesma origem
+    // sem o cabeçalho x-owner-chat (formulário/navegação) continua 403.
+    (await H(m).call(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "status" }, headers: { "x-owner-chat": "0" } }))).status === 403);
+  await mutant("sem-origem-api", "&& !sameOriginApi(request, url)) return", "&& false) return", async (m) =>
+    (await H(m).call(req("/api/admin/owner-chat/feed", { headers: { origin: "https://outro.zevanory.api.br" } }))).status === 403);
   await mutant("acao-sem-trava", "and action_state = 'proposta' and action_expires_at > now() returning action_type", "and action_expires_at > now() returning action_type", async (m) => {
     // o falso reproduz a trava pelo SQL: sem a cláusula, a linha volta a ser reivindicável
     const h = H(m, { kv: memKv({ [PAUSE]: "1" }) });
