@@ -333,7 +333,7 @@ async function mutant(name, from, to, check) {
 }
 test("mutantes morrem", async () => {
   const H = (m, opts = {}) => { const h = harness(opts); return { ...h, call: (r) => m.handleOwnerChat(r, h.env, h.deps) }; };
-  await mutant("sem-auth", "if (typeof isAdminAuthorized !== \"function\" || !isAdminAuthorized(request, env)) return unauthorized();", "", async (m) =>
+  await mutant("sem-auth", "if (!basicOk && !(await hasPinSession(request, env))) {", "if (false) {", async (m) =>
     (await H(m).call(new Request(ORIGIN + "/api/admin/owner-chat/feed"))).status === 401);
   await mutant("sem-csrf", "if (request.method !== \"POST\" || !sameOrigin(request, url))", "if (request.method !== \"POST\")", async (m) =>
     (await H(m).call(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "status" }, headers: { origin: "https://evil.example" } }))).status === 403);
