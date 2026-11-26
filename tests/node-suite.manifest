@@ -114,7 +114,7 @@ tests/operator-token-transition.test.mjs 8
 tests/order22-isolated-financial-proof-evidence.test.mjs 1
 tests/order7-whatsapp-commercial.test.mjs 11
 tests/owner-alert-policy.test.mjs 2
-tests/owner-chat-pin.test.mjs 10
+tests/owner-chat-pin.test.mjs 18
 tests/owner-chat.test.mjs 27
 tests/owner-oauth-tiktok.test.mjs 3
 tests/owner-oauth.test.mjs 11
@@ -138,7 +138,7 @@ tests/p20-diario-ensaio.test.mjs 9
 tests/p20-diario-reconcilia.test.mjs 10
 tests/p20-diario-sombra.test.mjs 11
 tests/p20-kv-copy-drill.test.mjs 8
-tests/p20-particoes-v2.test.mjs 10
+tests/p20-particoes-v2.test.mjs 11
 tests/p20-restore-drill.test.mjs 12
 tests/p22-proof-renewal-investigation.test.mjs 17
 tests/p23-ecommerce-legal.test.mjs 19

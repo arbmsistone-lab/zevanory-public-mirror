@@ -137,7 +137,7 @@
     "mercadopago-exact-sha-recovery.yml": "financial workflow: changes need the owner's written authorization",
     "financial-e2e-stripe.yml": "financial workflow: changes need the owner's written authorization"
   },
-  "rollback_policy": "A deliberate rollback is a git revert merged by the owner: a FORWARD promotion whose authorisation trail is the reviewed pull request. promotion_guard.py has no backwards path. Automatic recovery inside a failed release (central wrangler rollback, sales snapshot restore) only returns to the version that was live before that same run; the sales release never deletes the production script.",
+  "rollback_policy": "A deliberate rollback is a git revert merged by the owner: a FORWARD promotion whose authorisation trail is the reviewed pull request. promotion_guard.py has no backwards path. Central Worker recovery after the owner-chat cutover only targets the verified maintenance version ID. A failed or ambiguous maintenance publication stops without automatic rollback. The sales pipeline restores its own snapshot and never deletes the production script.",
   "recovery_when_production_unreadable": "Not automatic: the guard refuses. The owner dispatches the canonical workflow after confirming the live version manually (Cloudflare dashboard) or after restoring the readback endpoint; the run is recorded.",
   "credentials": "All 19 publishing workflows use the same account-wide tokens (CLOUDFLARE_API_TOKEN / CLOUDFLARE_PUBLIC_OWNER_API_TOKEN), so credential-level exclusivity does not exist today. Cloudflare supports account-owned API tokens scoped to Specified Workers with the Editor role (changelog 2026-09-15). Target: one token per Worker held only by that Worker's publishers, then revoke the shared tokens. Owner action.",
   "credentials_p21": {
@@ -245,7 +245,7 @@
         "guard_evidence": [
           "promotion_guard\\.py --service zevanory "
         ],
-        "controls": "promotion_guard (tag Cloudflare + /api/release) antes do deploy; readback pós-promoção; rollback automático só em FAIL; grupo deploy-zevanory (queue: max) + environment producao-critica; D1 (#987, NO-GO GPT-6 NC-P2b-DEP-01/02/03): input diario_d1 off (padrão: sem binding e sem nenhuma chamada D1, mesmo com os segredos) | certificar (fail-closed: migração e conferência antes da promoção, readback obrigatório depois, binding efetivo conferido na Cloudflare) | rollback (redeploy sem DIARIO com conferência); certificar e rollback exigem motivo=d1-config, que no promotion_guard promove só o MESMO SHA já vivo; DEC-P20-D1-01: a migração (d1 migrations apply --remote) usa só CF_TOKEN_D1_DIARIO_MIGRATE (D1 Edit) e o readback só CF_TOKEN_D1_DIARIO_READ (D1 Read), cada um no env do próprio passo e só em certificar, com o token compartilhado vazio ali (services.zevanory.d1_credentials)"
+        "controls": "promotion_guard (tag Cloudflare + /api/release) antes do deploy; readback pós-promoção; R1.2: rollback só para a versão A certificada, por ID, em falha de publicação ou smoke da fase B; fase A sem retorno automático; grupo deploy-zevanory (queue: max) + environment producao-critica; D1 (#987, NO-GO GPT-6 NC-P2b-DEP-01/02/03): input diario_d1 off (padrão: sem binding e sem nenhuma chamada D1, mesmo com os segredos) | certificar (fail-closed: migração e conferência antes da promoção, readback obrigatório depois, binding efetivo conferido na Cloudflare) | rollback (redeploy sem DIARIO com conferência); certificar e rollback exigem motivo=d1-config, que no promotion_guard promove só o MESMO SHA já vivo; DEC-P20-D1-01: a migração (d1 migrations apply --remote) usa só CF_TOKEN_D1_DIARIO_MIGRATE (D1 Edit) e o readback só CF_TOKEN_D1_DIARIO_READ (D1 Read), cada um no env do próprio passo e só em certificar, com o token compartilhado vazio ali (services.zevanory.d1_credentials)"
       },
       "certification-isolated-deploy.yml": {
         "classes": [
@@ -850,15 +850,6 @@
         "role": "writer",
         "note": "mídia de shorts no KV"
       },
-      "scripts/ci/cloudflare-post-deploy-verify.sh": {
-        "classes": [
-          "deploy"
-        ],
-        "invoked_by": [],
-        "role": "not-a-writer",
-        "findings": 1,
-        "note": "imprime a instrução de rollback (echo); não executa wrangler"
-      },
       "scripts/ci/credential_separation_gate.py": {
         "classes": [
           "deploy"
@@ -963,7 +954,7 @@
           "release-chain-proof.yml"
         ],
         "role": "not-a-writer",
-        "findings": 3,
+        "findings": 2,
         "note": "verificador estático da cadeia de publicação (só lê workflows)"
       },
       "scripts/sales_switch_workflow.py": {

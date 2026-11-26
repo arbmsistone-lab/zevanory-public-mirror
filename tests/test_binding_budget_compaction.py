@@ -344,7 +344,7 @@ class P20BindingVacancyStaticTest(unittest.TestCase):
             if re.search(r"wrangler@[\d.]+ (deploy|versions|rollback)", line) and not line.strip().startswith("#"):
                 self.assertIn("--dry-run", line)
         # Automatic rollback restores a previous version as a whole (old top-level vars, same values): no new writer.
-        self.assertIn("rollback --name zevanory", (wf / "central-production-deploy.yml").read_text(encoding="utf-8"))
+        self.assertIn('rollback "$OWNER_CHAT_ROLLBACK_ID" --name zevanory', (wf / "central-production-deploy.yml").read_text(encoding="utf-8"))
 
 
 

@@ -22,7 +22,7 @@ function extendCsp(value){
 export async function injectInstitutionalChat(request,env,response){
   if(String(env?.SITE_CHAT_ENABLED||"").trim()!=="true")return response;
   const url=new URL(request.url);
-  if(url.hostname!==HOST||request.method!=="GET"||url.pathname.startsWith("/api/"))return response;
+  if(url.hostname!==HOST||request.method!=="GET"||url.pathname.startsWith("/api/")||url.pathname.startsWith("/admin/"))return response;
   if(!response||response.status!==200||!/text\/html/i.test(response.headers.get("content-type")||""))return response;
   if(response.headers.get("content-encoding"))return response;
   const html=await response.text();

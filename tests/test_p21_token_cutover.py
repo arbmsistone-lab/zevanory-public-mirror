@@ -61,6 +61,67 @@ ADDED_STEPS = {
     "central-production-deploy.yml": ["P21 token dedicado - descoberta sem permissão extra"],
     "zevanory-sales-public-release.yml": ["Park fixed candidate (P21 token dedicado, sem permissão de apagar Worker)"],
 }
+# Exceção AUTORIZADA (proprietário, 26/11/2026, "Fechamento definitivo P20/P21"): rollback automático do deploy
+# central para a fase A certificada do chat do proprietário. NÃO muda BASE_FINGERPRINT: a impressão desfaz SÓ este
+# delta, e só quando cada parte é IDÊNTICA ao texto autorizado (passo novo inteiro; condição, variáveis e trecho do
+# run do passo de rollback). Qualquer outra diferença, inclusive uma variação do próprio delta, continua mudando a
+# impressão e reprova (mutantes M23 a M28).
+OWNER_CHAT_ROLLBACK = {
+    "workflow": "central-production-deploy.yml",
+    "job": "deploy",
+    "added_step": {
+        "name": "Resolve certified owner-chat rollback target",
+        "id": "ownerchatrollback",
+        "if": "steps.auth.outputs.available == 'true'",
+        "env": {"OWNER_CHAT_PHASE_A_VERSION_ID": "${{ vars.OWNER_CHAT_PHASE_A_VERSION_ID }}"},
+        "run": "python3 scripts/deploy/owner-chat-rollback-target.py",
+        "before": "P20 diário D1 - migrações e certificação antes da promoção (fail-closed só em certificar)",
+    },
+    "rollback_step": "Automatic rollback after failed post-deploy smoke",
+    "if_base": "failure() && steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'",
+    "if_new": "failure() && steps.auth.outputs.available == 'true' && (steps.deployworker.outcome == 'success' || steps.deployworker.outcome == 'failure')",
+    "env_added": {
+        "OWNER_CHAT_PHASE": "${{ steps.ownerchatrollback.outputs.phase }}",
+        "OWNER_CHAT_ROLLBACK_ID": "${{ steps.ownerchatrollback.outputs.version_id }}",
+        "OWNER_CHAT_ROLLBACK_SHA": "${{ steps.ownerchatrollback.outputs.sha }}",
+    },
+    "run_base": 'npx --yes wrangler@4.143.0 rollback --name zevanory --config wrangler.central-fix.jsonc --message "Automatic rollback after failed production smoke for $TARGET_RUNTIME_SHA"\n',
+    "run_new": ('if [ "$OWNER_CHAT_PHASE" != "postgres" ] || [ -z "$OWNER_CHAT_ROLLBACK_ID" ] || [ -z "$OWNER_CHAT_ROLLBACK_SHA" ]; then\n'
+                '  echo "::error title=OWNER_CHAT_ROLLBACK_BLOCKED::Sem fase A certificada como destino; reconciliar a versão efetiva sem retornar à autoridade KV."\n'
+                '  exit 1\n'
+                'fi\n'
+                'npx --yes wrangler@4.143.0 rollback "$OWNER_CHAT_ROLLBACK_ID" --name zevanory --config wrangler.central-fix.jsonc --message "Owner chat: restore certified maintenance after $TARGET_RUNTIME_SHA"\n'
+                'python3 scripts/deploy/promotion_guard.py --verify-promoted --service zevanory \\\n'
+                '  --candidate "$OWNER_CHAT_ROLLBACK_SHA" \\\n'
+                '  --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \\\n'
+                '  --cloudflare-script zevanory\n'
+                'python3 scripts/deploy/owner-chat-rollback-target.py --verify-active\n'),
+}
+
+
+def _undo_owner_chat_rollback(wf_name, job_name, steps):
+    """Desfaz o delta autorizado do rollback do chat, parte a parte, só com igualdade exata; o resto fica como está."""
+    X = OWNER_CHAT_ROLLBACK
+    if wf_name != X["workflow"] or job_name != X["job"]:
+        return steps
+    out = []
+    A = X["added_step"]
+    for i, s in enumerate(steps):
+        nxt = steps[i + 1]["name"] if i + 1 < len(steps) else None
+        if (s["name"] == A["name"] and s.get("id") == A["id"] and (s["if"] or "") == A["if"] and s["env"] == A["env"]
+                and s["run"] == A["run"] and not s.get("uses") and nxt == A["before"]):
+            continue
+        if s["name"] == X["rollback_step"]:
+            s = dict(s, env=dict(s["env"]))
+            if (s["if"] or "") == X["if_new"]:
+                s["if"] = X["if_base"]
+            if all(s["env"].get(k) == v for k, v in X["env_added"].items()):
+                for k in X["env_added"]:
+                    del s["env"][k]
+            if s["run"].count(X["run_new"]) == 1:
+                s["run"] = s["run"].replace(X["run_new"], X["run_base"])
+        out.append(s)
+    return out
 # Impressão digital (sha256) de cada job no gh-pages anterior: nome, if, run e env de cada passo, na ordem, e as
 # chaves do job sem needs. Calculada por fingerprint() sobre `git show 6686ad24:<workflow>`.
 BASE_FINGERPRINT = {}  # preenchido no fim do arquivo (dados)
@@ -155,15 +216,16 @@ MUST_SKIP_WHEN_TRUE = {
 }
 
 
-def fingerprint(text, strip_p21=True):
-    """sha256 por job dos passos que já existiam (sem o gate e os passos novos), com as formas P21 desfeitas."""
+def fingerprint(text, strip_p21=True, wf_name=None):
+    """sha256 por job dos passos que já existiam (sem o gate e os passos novos), com as formas P21 desfeitas e, só no
+    workflow indicado, o delta autorizado do rollback do chat do proprietário desfeito (OWNER_CHAT_ROLLBACK)."""
     jobs = P.parse_workflow(text)
     out = {}
     for jn, j in jobs.items():
         if jn == "p21_token":
             continue
         items = []
-        for s in j["steps"]:
+        for s in _undo_owner_chat_rollback(wf_name, jn, j["steps"]):
             if s["name"] == P.GATE_NAME or any(s["name"] in v for v in ADDED_STEPS.values()):
                 continue
             env = {k: unwrap(v) for k, v in s["env"].items() if not (strip_p21 and k in ("P21_CUTOVER", "P21_SALES_FIXED_CANDIDATE"))}
@@ -228,7 +290,7 @@ def check_base_equivalence(root):
                         seen.append((w, jn, s["name"], k, unwrap(v)))
     assert sorted(seen) == sorted(BASE_TOKEN_ENV), {"novo": sorted(set(seen) - set(BASE_TOKEN_ENV)), "faltando": sorted(set(BASE_TOKEN_ENV) - set(seen))}
     for svc, (_, w, _) in CANONICAL.items():
-        fp = fingerprint(wf_text(root, w))
+        fp = fingerprint(wf_text(root, w), wf_name=w)
         assert fp == BASE_FINGERPRINT[w], f"{w}: passos já existentes mudaram (nome/if/run/env): {fp} != {BASE_FINGERPRINT[w]}"
 
 
@@ -526,6 +588,13 @@ MUTANTS = {
     "M20 interruptor virado neste PR": edit_json(lambda c: c["services"]["zevanory-product-control-portable"].update(cutover=True, token_id=TOKEN_ID)),
     "M21 rótulo P21 removido do passo de autoridade": edit(C, 'echo "CLOUDFLARE_AUTH_SOURCE=P21_DEDICATED_TOKEN_CF_TOKEN_ZEVANORY"', 'echo "CLOUDFLARE_AUTH_SOURCE=LEGACY_FALLBACK_TOKEN"'),
     "M22 estacionamento com nome arbitrário": edit(S, '\'name = "zevanory-sales-candidate"\' \'main', '\'name = "zevanory-sales-public"\' \'main'),
+    # Exceção do rollback do chat (26/11/2026): só o texto autorizado passa; qualquer variação reprova.
+    "M23 rollback do chat sem o ID certificado da fase A": edit(C, 'rollback "$OWNER_CHAT_ROLLBACK_ID" --name zevanory', 'rollback --name zevanory'),
+    "M24 rollback do chat com condição ampliada": edit(C, "(steps.deployworker.outcome == 'success' || steps.deployworker.outcome == 'failure')", "steps.deployworker.outcome != 'skipped'"),
+    "M25 passo novo do chat com execução diferente": edit(C, "run: python3 scripts/deploy/owner-chat-rollback-target.py\n", "run: python3 scripts/deploy/owner-chat-rollback-target.py --allow-missing\n"),
+    "M26 rollback do chat sem conferir a versão ativa": edit(C, "          python3 scripts/deploy/owner-chat-rollback-target.py --verify-active\n", ""),
+    "M27 variável extra no passo de rollback": edit(C, "          OWNER_CHAT_ROLLBACK_SHA: ${{ steps.ownerchatrollback.outputs.sha }}\n", "          OWNER_CHAT_ROLLBACK_SHA: ${{ steps.ownerchatrollback.outputs.sha }}\n          OWNER_CHAT_SKIP_VERIFY: '1'\n"),
+    "M28 trecho vizinho do rollback alterado junto": edit(C, "for i in $(seq 1 20); do\n            code=\"$(curl -sS -o /tmp/rollback-health.json", "for i in $(seq 1 2); do\n            code=\"$(curl -sS -o /tmp/rollback-health.json"),
 }
 
 

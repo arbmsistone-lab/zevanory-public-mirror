@@ -515,6 +515,12 @@ jobs:
             exit 1
           fi
 
+      - name: Resolve certified owner-chat rollback target
+        id: ownerchatrollback
+        if: steps.auth.outputs.available == 'true'
+        env:
+          OWNER_CHAT_PHASE_A_VERSION_ID: ${{ vars.OWNER_CHAT_PHASE_A_VERSION_ID }}
+        run: python3 scripts/deploy/owner-chat-rollback-target.py
       - name: P20 diário D1 - migrações e certificação antes da promoção (fail-closed só em certificar)
         # docs/p20/diario-d1.md, seções "Binding e migração", "Credenciais dedicadas (DEC-P20-D1-01)" e "Primeiro deploy
         # com D1" (NO-GO do GPT-6, NC-P2b-DEP-02). DEC-P20-D1-01: o D1 só é tocado com o token DEDICADO de migração
@@ -764,14 +770,26 @@ jobs:
             --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
             --cloudflare-script zevanory
       - name: Automatic rollback after failed post-deploy smoke
-        if: failure() && steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
+        if: failure() && steps.auth.outputs.available == 'true' && (steps.deployworker.outcome == 'success' || steps.deployworker.outcome == 'failure')
         env:
+          OWNER_CHAT_PHASE: ${{ steps.ownerchatrollback.outputs.phase }}
+          OWNER_CHAT_ROLLBACK_ID: ${{ steps.ownerchatrollback.outputs.version_id }}
+          OWNER_CHAT_ROLLBACK_SHA: ${{ steps.ownerchatrollback.outputs.sha }}
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           echo "POSTDEPLOY_SMOKE_FAILED=1"
-          npx --yes wrangler@4.143.0 rollback --name zevanory --config wrangler.central-fix.jsonc --message "Automatic rollback after failed production smoke for $TARGET_RUNTIME_SHA"
+          if [ "$OWNER_CHAT_PHASE" != "postgres" ] || [ -z "$OWNER_CHAT_ROLLBACK_ID" ] || [ -z "$OWNER_CHAT_ROLLBACK_SHA" ]; then
+            echo "::error title=OWNER_CHAT_ROLLBACK_BLOCKED::Sem fase A certificada como destino; reconciliar a versão efetiva sem retornar à autoridade KV."
+            exit 1
+          fi
+          npx --yes wrangler@4.143.0 rollback "$OWNER_CHAT_ROLLBACK_ID" --name zevanory --config wrangler.central-fix.jsonc --message "Owner chat: restore certified maintenance after $TARGET_RUNTIME_SHA"
+          python3 scripts/deploy/promotion_guard.py --verify-promoted --service zevanory \
+            --candidate "$OWNER_CHAT_ROLLBACK_SHA" \
+            --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
+            --cloudflare-script zevanory
+          python3 scripts/deploy/owner-chat-rollback-target.py --verify-active
           for i in $(seq 1 20); do
             code="$(curl -sS -o /tmp/rollback-health.json -w '%{http_code}' https://zevanory.api.br/api/health || true)"
             if [ "$code" = "200" ] && python3 scripts/deploy/verify-rollback-health.py /tmp/rollback-health.json;
