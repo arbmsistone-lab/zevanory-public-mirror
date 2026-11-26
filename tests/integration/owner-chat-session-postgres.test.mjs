@@ -39,7 +39,7 @@ function parseCsv(text) {
 }
 const BOOL_COLS = new Set(["live"]); // o driver do Neon devolve boolean; o CSV do psql devolve t/f
 // Adaptador: uma conexão por consulta. `gate(tag, params)` permite pausar o handler logo antes de uma instrução.
-function pg({ port = PORT, gate = null } = {}) {
+function pg({ port = PORT, gate = null, db = DB } = {}) {
   const sql = {
     log: [],
     async query(q, params = []) {
@@ -47,7 +47,7 @@ function pg({ port = PORT, gate = null } = {}) {
       if (gate) await gate(tag, params);
       sql.log.push(tag);
       const inl = q.replace(/\$(\d+)/g, (_, n) => lit(params[Number(n) - 1]));
-      const { stdout } = await run("psql", psqlArgs(inl, DB, port), { encoding: "utf8", maxBuffer: 1 << 24, env: PGENV(APP) });
+      const { stdout } = await run("psql", psqlArgs(inl, db, port), { encoding: "utf8", maxBuffer: 1 << 24, env: PGENV(APP) });
       const rows = parseCsv(stdout.trim() ? stdout : "");
       if (!rows.length) return [];
       const [head, ...data] = rows;
@@ -142,6 +142,15 @@ test("esquema: idempotente, não destrutivo (só create/alter if not exists), s�
   assert.equal((await feed(h, c)).status, 200);
   q1(`update zevanory_owner_chat_sessions set expires_at = now() - interval '1 second' where token_sha256 = ${lit(hash)}`);
   assert.equal((await feed(h, c)).status, 401, "expirada pelo relógio do banco");
+});
+
+test("gravações internas (sentinela, vigia, conciliação) funcionam num banco sem a tabela de sessões", { skip: SKIP }, async () => {
+  execFileSync("psql", psqlArgs(`drop database if exists ${DB}_fresh`, "postgres"), { env: PGENV("zv-test") });
+  execFileSync("psql", psqlArgs(`create database ${DB}_fresh`, "postgres"), { env: PGENV("zv-test") });
+  const fresh = pg({ db: DB + "_fresh" });
+  const m = await chat.insertOwnerMessage(fresh, { from: "zevanory", kind: "alerta", text: "aviso do vigia" });
+  assert.equal(m?.text, "aviso do vigia");
+  assert.equal(execFileSync("psql", psqlArgs(`select count(*) from information_schema.tables where table_name = 'zevanory_owner_chat_sessions'`, DB + "_fresh"), { encoding: "utf8" }).trim().split("\n").pop(), "0");
 });
 
 test("banco indisponível = acesso negado: login 503 sem cookie, leitura 401, logout 503 sem confirmar", { skip: SKIP }, async () => {
@@ -317,7 +326,7 @@ const rejects = async (fn, label) => { let failed = false; try { await fn(); } c
 test("contraprovas: guarda removida da reivindicação, do envio e da leitura; sem FOR SHARE; logout que ignora ações autorizadas; contador não atômico — todas detectadas", { skip: SKIP }, async () => {
   const claimOff = await mutant("owner-chat.mjs", "and action_expires_at > now() and ($2::text is null or ${SESSION_VALID_SQL(2)}) returning action_type", "and action_expires_at > now() returning action_type");
   await rejects(() => scenarioRevokeBetween(claimOff), "claim-sem-guarda");
-  const insertOff = await mutant("owner-chat.mjs", "where ($7::text is null or ${SESSION_VALID_SQL(7)})", "where ($7::text is null or true)");
+  const insertOff = await mutant("owner-chat.mjs", "${session === null ? \"\" : `where ${SESSION_VALID_SQL(7)}`}", "");
   await rejects(async () => { const m = await revokeBetween(insertOff, "insert", (h, c) => message(h, c, "status mut")); assert.equal(m.res.status, 401); }, "envio-sem-guarda");
   const feedOff = await mutant("owner-chat.mjs", "where ($2::text is null or ${SESSION_VALID_SQL(2)}) order by seq desc limit $1", "where ($2::text is null or true) order by seq desc limit $1");
   await rejects(async () => { const f = await revokeBetween(feedOff, "feed", (h, c) => feed(h, c)); assert.equal(f.res.status, 401); }, "leitura-sem-guarda");

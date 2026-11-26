@@ -257,13 +257,14 @@ test("R2/M1: página — marca dupla (cookie + localStorage), 409 repete o logou
   assert.match(js, /document\.cookie=END\+'=1; Path=\/; Max-Age=43200; Secure; SameSite=Strict'/);
   assert.match(js, /async function sair\(\)\{const marked=endMark\(\);encerrar\(\);/);
   assert.match(js, /if\(endOn\(\)\)\{sair\(\);\}else\{/);
-  for (const path of ["feed", "message", "action"]) assert.match(js, new RegExp("fetch\\('/api/admin/owner-chat/" + path + "[^]*?if\\(r\\.status===409\\)return sair\\(\\);"), "409: " + path);
+  for (const path of ["feed", "message", "action"]) assert.match(js, new RegExp("fetch\\('/api/admin/owner-chat/" + path + "[^]*?if\\(r\\.status===409&&j\\.error==='logout_pending'\\)return sair\\(\\);"), "409: " + path);
+  assert.doesNotMatch(js, /if\(r\.status===409\)return sair\(\);/, "outros 409 (ação em andamento/já usada) não encerram a sessão");
   assert.match(js, /Este navegador não permitiu guardar o pedido de saída/);
   assert.doesNotMatch(s, /[Ff]eche o navegador/);
   assert.match(js, /e\.origin!=='https:\/\/controle\.zevanory\.api\.br'\|\|e\.source!==window\.parent/);
   assert.match(js, /if\(!open\)\{clearInterval\(iv\);iv=0;log\.hidden=true;/);
   assert.match(js, /if\(shown&&g===openGen\)log\.hidden=false;/);
-  assert.match(js, /if\(document\.hidden\|\|ended\|\|!shown\|\|inflight\)return;inflight=true;/);
+  assert.match(js, /if\(document\.hidden\|\|ended\|\|!shown\)return;if\(inflight\)\{again=true;return;\}inflight=true;/); assert.match(js, /finally\{inflight=false;if\(again\)\{again=false;poll\(\);\}\}/);
   assert.match(pin.PIN_PAGE, /if\(r\.ok\)\{try\{localStorage\.removeItem\("zv_owner_chat_logout_pending"\)\}catch\{\}location\.replace/);
   assert.doesNotThrow(() => new Function(js));
 });

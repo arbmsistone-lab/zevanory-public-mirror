@@ -59,7 +59,7 @@ jobs:
           node --test tests/integration/owner-chat-session-postgres.test.mjs 2>&1 | grep -v '"event":"owner_chat_pin_failed"' | tee s.txt
           echo "::notice title=COUNTS_SESSION::$(grep -E '^# (tests|pass|fail|skipped|todo|cancelled) ' s.txt | paste -sd' ' -)"
           echo "::notice title=RACE::$(grep -oE 'OWNER_CHAT_PG_RACE .*' s.txt)"
-          grep -qx "# tests 8" s.txt && grep -qx "# pass 8" s.txt && grep -qx "# skipped 0" s.txt && grep -qx "# todo 0" s.txt && grep -qx "# fail 0" s.txt && grep -qx "# cancelled 0" s.txt
+          grep -qx "# tests 9" s.txt && grep -qx "# pass 9" s.txt && grep -qx "# skipped 0" s.txt && grep -qx "# todo 0" s.txt && grep -qx "# fail 0" s.txt && grep -qx "# cancelled 0" s.txt
           test "$(grep -c '^# OWNER_CHAT_PG_COUNTERPROOF .*=DETECTED$' s.txt)" = "6"
       - name: Rollback seguro (R1.2) contra o código de produção 813870c2 (contagem exata)
         env:
