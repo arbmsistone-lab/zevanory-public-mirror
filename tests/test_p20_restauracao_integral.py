@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts", "ops"))
 import restore_new_database as rnd  # noqa: E402
 
 SKIP = not os.environ.get("PGHOST")
-SENSITIVE = re.compile(r"credential|oauth|secret|token|password", re.I)
+SENSITIVE = re.compile(r"credential|oauth|secret|token|password|^zevanory_owner_chat_(sessions|pin_attempts)$", re.I)  # = worker/data-backup.mjs (credenciais + segurança efêmera)
 APP = "p20_app"
 NOW = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
 DAY = NOW[:10]

@@ -42,14 +42,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/support-email-forward.test.mjs | tee /tmp/support.txt
+          # Saída TAP explícita: a imagem ubuntu-26.04 passou a usar outro reporter padrão ("ℹ tests N" em vez de
+          # "# tests N"); os testes e as contagens exigidas não mudam.
+          node --test --test-reporter=tap tests/support-email-forward.test.mjs | tee /tmp/support.txt
           grep -qx "# tests 37" /tmp/support.txt || { echo "::error::contagem de testes diferente de 37"; exit 1; }
           grep -qx "# fail 0" /tmp/support.txt || { echo "::error::falha na suíte"; exit 1; }
       - name: Entrada scheduled real despacha o dreno (contagem exata)
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/support-drain-scheduled.test.mjs | tee /tmp/sched.txt
+          node --test --test-reporter=tap tests/support-drain-scheduled.test.mjs | tee /tmp/sched.txt
           grep -qx "# tests 2" /tmp/sched.txt && grep -qx "# pass 2" /tmp/sched.txt && grep -qx "# skipped 0" /tmp/sched.txt
       - name: Contraprovas do runner sobre o classificador compartilhado (contagem exata)
         shell: bash
