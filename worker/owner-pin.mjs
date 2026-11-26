@@ -93,9 +93,24 @@ export async function handlePinLogout(request, env = {}) {
   if (request.method !== "POST") return new Response(null, { status: 405 });
   if (request.headers.get("origin") !== url.origin || request.headers.get("x-owner-chat") !== "1") return json({ error: "forbidden" }, 403);
   const token = cookieValue(request, PIN_COOKIE);
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
-  if (token && /^[0-9a-f]{64}$/.test(token) && kv?.delete) { try { await kv.delete(SESSION_PREFIX + (await sha256Hex(token))); } catch {} }
-  return json({ ok: true }, 200, { "set-cookie": `${PIN_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict` });
+  const clear = { "set-cookie": `${PIN_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict` };
+  // Sem token válido neste navegador não há sessão a revogar: confirma e apaga o cookie (idempotente).
+  if (!token || !/^[0-9a-f]{64}$/.test(token)) return json({ ok: true, revoked: false, reason: "no_session" }, 200, clear);
+  // CA-09.1: só confirma com a exclusão feita E conferida. Em falha, 503 SEM apagar o cookie, para a nova tentativa
+  // ainda saber qual sessão revogar.
+  const revoked = await revokeSession(env.ZEVANORY_PRIVATE_ARTIFACTS, SESSION_PREFIX + (await sha256Hex(token)));
+  if (!revoked) { console.warn(JSON.stringify({ event: "owner_chat_logout_unconfirmed" })); return json({ ok: false, error: "revoke_unconfirmed" }, 503); }
+  return json({ ok: true, revoked: true }, 200, clear);
+}
+
+// Exclui a sessão e confere a exclusão. Sem KV ou sem delete/get, delete com erro, leitura com erro ou valor ainda
+// presente => não revogada. Garantia real do Workers KV: a leitura de conferência roda no mesmo ponto de presença da
+// exclusão (onde ela é visível na hora); nos demais pontos a exclusão propaga em até ~60 s. O cookie do navegador é
+// apagado na confirmação, e um token copiado só poderia ser reaproveitado em outro ponto dentro dessa janela.
+async function revokeSession(kv, key) {
+  if (!kv?.delete || !kv?.get) return false;
+  try { await kv.delete(key); } catch { return false; }
+  try { return (await kv.get(key)) === null; } catch { return false; }
 }
 
 export const PIN_PAGE_HEADERS = Object.freeze({
@@ -121,7 +136,7 @@ p.addEventListener("input",()=>{p.value=p.value.replace(/\\D/g,"").slice(0,6);if
 p.addEventListener("keydown",e=>{if(e.key==="Enter")go();});b.addEventListener("click",go);
 async function go(){if(!/^\\d{6}$/.test(p.value)){m.textContent="O PIN tem 6 números.";return;}b.disabled=true;m.textContent="";
 try{const r=await fetch("${OWNER_PIN_PATHS.login}",{method:"POST",headers:{"content-type":"application/json","x-owner-chat":"1"},body:JSON.stringify({pin:p.value}),credentials:"same-origin"});
-const j=await r.json().catch(()=>({}));if(r.ok){location.replace("/admin/proprietario");return;}
+const j=await r.json().catch(()=>({}));if(r.ok){try{localStorage.removeItem("zv_owner_chat_logout_pending")}catch{}location.replace("/admin/proprietario");return;}
 m.textContent=r.status===429?"Muitas tentativas. Aguarde e tente de novo mais tarde.":r.status===401?("PIN incorreto."+(typeof j.restantes==="number"?" Tentativas restantes: "+j.restantes+".":"")):"Não foi possível entrar agora.";}
 catch{m.textContent="Sem conexão. Tente de novo.";}p.value="";b.disabled=false;p.focus();}
 </script></body></html>`;

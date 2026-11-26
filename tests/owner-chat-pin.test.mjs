@@ -145,7 +145,7 @@ test("E3/E3b: página do chat — Sair com confirmação do servidor, 401 encerr
   // CA-09: só "encerrada" com 2xx e ok:true; caso contrário, aviso e nova tentativa, sem voltar a consultar.
   assert.match(js, /confirmed=r\.ok&&j\.ok===true;/);
   assert.match(js, /signal:AbortSignal\.timeout\(8000\)/);
-  assert.match(js, /if\(confirmed\)\{fimMsg\.textContent='Sessão encerrada\.';location\.replace\('\/admin\/proprietario'\);return;\}/);
+  assert.match(js, /if\(confirmed\)\{pend\.clear\(\);fimMsg\.textContent='Sessão encerrada\.';location\.replace\('\/admin\/proprietario'\);return;\}/);
   assert.match(js, /A sessão pode continuar válida/);
   // CA-10: Esc avisa só a origem do painel.
   assert.match(js, /window\.parent\.postMessage\(\{type:'zv-owner-chat:escape'\},'https:\/\/controle\.zevanory\.api\.br'\)/);
@@ -173,4 +173,47 @@ test("E3b/CA-11: API do chat recusa outra origem ANTES de PIN, sessão, KV ou ba
   // A página e o app (navegação do iframe do painel, same-site) não são bloqueados por esta regra.
   assert.equal((await call("/admin/proprietario", { "sec-fetch-site": "same-site" })).status, 200);
   assert.equal((await call("/api/admin/owner-chat/app", { "sec-fetch-site": "same-site" })).status, 200);
+});
+
+test("CA-09.1: logout só confirma com a sessão excluída E conferida; falha do KV = 503 sem apagar o cookie; repetir funciona", async () => {
+  const out = (h, c) => h.call(new Request(ORIGIN + "/api/admin/owner-chat/logout", { method: "POST", headers: { origin: ORIGIN, "x-owner-chat": "1", ...(c ? { cookie: c } : {}) } }));
+  // delete lança erro (falha interna do KV)
+  const kv1 = memKv(); const h1 = harness({ kv: kv1 }); const c1 = cookieOf(await login(h1, "482915"));
+  const del = kv1.delete; kv1.delete = async () => { throw new Error("kv indisponível"); };
+  let r = await out(h1, c1);
+  assert.equal(r.status, 503); assert.deepEqual(await r.json(), { ok: false, error: "revoke_unconfirmed" });
+  assert.equal(r.headers.get("set-cookie"), null, "não apaga o cookie: a nova tentativa precisa do token");
+  assert.equal((await get(h1, "/api/admin/owner-chat/feed", c1)).status, 200, "a sessão de fato continua válida");
+  kv1.delete = del; r = await out(h1, c1);
+  assert.equal(r.status, 200); assert.deepEqual(await r.json(), { ok: true, revoked: true }); assert.match(r.headers.get("set-cookie"), /Max-Age=0/);
+  assert.equal((await get(h1, "/api/admin/owner-chat/feed", c1)).status, 401, "token anterior recusado após confirmação");
+  // logout repetido com o mesmo token: idempotente
+  r = await out(h1, c1); assert.equal(r.status, 200); assert.equal((await r.json()).ok, true);
+  // exclusão "aceita" mas o valor continua lá (consistência eventual): não confirma
+  const kv2 = memKv(); const h2 = harness({ kv: kv2 }); const c2 = cookieOf(await login(h2, "482915"));
+  kv2.delete = async () => {}; r = await out(h2, c2); assert.equal(r.status, 503); assert.equal((await r.json()).ok, false);
+  // leitura de conferência com erro: não confirma
+  const kv3 = memKv(); const h3 = harness({ kv: kv3 }); const c3 = cookieOf(await login(h3, "482915"));
+  const g3 = kv3.get; kv3.delete = async (k) => { kv3.data.delete(k); kv3.get = async () => { throw new Error("kv"); }; };
+  r = await out(h3, c3); assert.equal(r.status, 503); kv3.get = g3;
+  // KV ausente ou sem delete: não confirma
+  for (const env of [{ OWNER_CHAT_PIN: "482915" }, { OWNER_CHAT_PIN: "482915", ZEVANORY_PRIVATE_ARTIFACTS: { get: async () => "1" } }]) {
+    const res = await chat.handleOwnerChat(new Request(ORIGIN + "/api/admin/owner-chat/logout", { method: "POST", headers: { origin: ORIGIN, "x-owner-chat": "1", cookie: "zv_owner_chat=" + "b".repeat(64) } }), env, {});
+    assert.equal(res.status, 503); assert.equal(res.headers.get("set-cookie"), null);
+  }
+  // sem cookie: nada a revogar neste navegador
+  r = await out(harness()); assert.equal(r.status, 200); assert.deepEqual(await r.json(), { ok: true, revoked: false, reason: "no_session" });
+  // sessão que já expirou no KV: exclusão conferida, confirma
+  const kv4 = memKv(); const h4 = harness({ kv: kv4 }); const c4 = cookieOf(await login(h4, "482915"));
+  for (const k of [...kv4.data.keys()]) if (k.includes("pin-session")) kv4.data.delete(k);
+  r = await out(h4, c4); assert.equal(r.status, 200); assert.equal((await r.json()).revoked, true);
+});
+
+test("CA-09.1: trava local persistente — Sair marca pendente, recarregar abre encerrado e tenta de novo; confirmação ou novo login liberam", () => {
+  const s = chat.OWNER_CHAT_PAGE; const js = s.slice(s.indexOf("<script>") + 8, s.lastIndexOf("</script>"));
+  assert.match(js, /const PEND='zv_owner_chat_logout_pending'/);
+  assert.match(js, /async function sair\(\)\{pend\.set\(\);encerrar\(\);/);
+  assert.match(js, /if\(confirmed\)\{pend\.clear\(\);/);
+  assert.match(js, /if\(pend\.on\(\)\)\{sair\(\);\}else\{document\.addEventListener\('visibilitychange',poll\);poll\(\);iv=setInterval\(poll,5000\);\}/);
+  assert.match(pin.PIN_PAGE, /if\(r\.ok\)\{try\{localStorage\.removeItem\("zv_owner_chat_logout_pending"\)\}catch\{\}location\.replace/);
 });

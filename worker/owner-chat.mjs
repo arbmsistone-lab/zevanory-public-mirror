@@ -437,6 +437,10 @@ form{display:flex;gap:8px;padding:12px 16px;background:var(--card)}input{flex:1;
 <div id="fim" role="status" hidden><p id="fimmsg"></p><button id="retry" type="button" hidden>Tentar encerrar de novo</button></div>
 <form id="f"><input id="q" autocomplete="off" maxlength="1500" placeholder="Fale com o Epaminondas (ex.: status, vendas, o que está parado)"><button id="b">Enviar</button></form>
 <script>(()=>{const log=document.getElementById('log'),st=document.getElementById('st'),q=document.getElementById('q'),b=document.getElementById('b'),f=document.getElementById('f'),sairB=document.getElementById('sair'),fimBox=document.getElementById('fim'),fimMsg=document.getElementById('fimmsg'),retry=document.getElementById('retry');let ver='';const nodes=new Map();let ended=false,iv=0;const ctl=new AbortController();
+// CA-09.1: trava local persistente. Enquanto um Sair não tiver confirmação do servidor, recarregar a página NÃO traz a
+// conversa de volta: a página abre já encerrada e tenta encerrar de novo. Só a confirmação (ou um novo login por PIN)
+// libera. Sem armazenamento disponível, vale só a proteção da página aberta.
+const PEND='zv_owner_chat_logout_pending',pend={on:()=>{try{return localStorage.getItem(PEND)==='1'}catch{return false}},set:()=>{try{localStorage.setItem(PEND,'1')}catch{}},clear:()=>{try{localStorage.removeItem(PEND)}catch{}}};
 // Esc dentro do chat (iframe do painel): avisa SÓ a janela do painel (origem fixa); o painel confere origem e janela.
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&window.parent!==window)window.parent.postMessage({type:'zv-owner-chat:escape'},'${PANEL_ORIGIN}');});
 // Encerramento local imediato: para a consulta, cancela pedidos em andamento e apaga a conversa. Depois disso nenhuma
@@ -455,9 +459,9 @@ f.onsubmit=async e=>{e.preventDefault();const text=q.value.trim();if(!text||ende
 // Sair: apaga a conversa na hora; só diz "encerrada" (e volta ao PIN) com a confirmação do servidor (HTTP 2xx e ok:true).
 // Sem confirmação (erro, 5xx, tempo esgotado, sem rede), avisa que a sessão pode continuar válida e oferece tentar de novo;
 // a conversa NÃO volta sozinha (a consulta periódica fica parada).
-async function sair(){encerrar();fimBox.hidden=false;retry.hidden=true;fimMsg.textContent='Encerrando a sessão…';let confirmed=false;
+async function sair(){pend.set();encerrar();fimBox.hidden=false;retry.hidden=true;fimMsg.textContent='Encerrando a sessão…';let confirmed=false;
 try{const r=await fetch('/api/admin/owner-chat/logout',{method:'POST',headers:H,signal:AbortSignal.timeout(8000)});const j=await r.json().catch(()=>({}));confirmed=r.ok&&j.ok===true;}catch{}
-if(confirmed){fimMsg.textContent='Sessão encerrada.';location.replace('/admin/proprietario');return;}
+if(confirmed){pend.clear();fimMsg.textContent='Sessão encerrada.';location.replace('/admin/proprietario');return;}
 fimMsg.textContent='Não foi possível confirmar o encerramento no servidor. A sessão pode continuar válida. Verifique a conexão e tente de novo.';retry.hidden=false;retry.focus();}
 sairB.onclick=sair;retry.onclick=sair;
-document.addEventListener('visibilitychange',poll);poll();iv=setInterval(poll,5000);})();</script></body></html>`;
+if(pend.on()){sair();}else{document.addEventListener('visibilitychange',poll);poll();iv=setInterval(poll,5000);}})();</script></body></html>`;
