@@ -21,6 +21,7 @@
 //   devolve o cursor (última seq da página); sem sobreposição que faça o cliente saltar. Marcador KV é só dica.
 // * Sentinela proativa (cron 5,35, depois do motor): canal esperado sem publicação depois do horário vira
 //   "CANAL PARADO" com o motivo (pausado, sem credencial, erro); venda aprovada nova vira aviso.
+import { OWNER_PIN_PATHS, handlePinLogin, handlePinLogout, hasPinSession, pinConfigured, PIN_PAGE, PIN_PAGE_HEADERS } from "./owner-pin.mjs";
 import { acquisitionSnapshot, OWNER_DISABLED_CHANNELS } from "./acquisition-engine.mjs";
 import { SALES_SUMMARY_KEY } from "./sales-ledger.mjs";
 import { CREATIVE_AUTOPUBLISH_PAUSE_KEY } from "./creative-autonomy.mjs";
@@ -303,7 +304,16 @@ export const isOwnerChatPath = (pathname) => pathname === OWNER_CHAT_PATHS.page 
 export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sqlFactory, snapshot } = {}) {
   const url = new URL(request.url);
   if (!isOwnerChatPath(url.pathname)) return null;
-  if (typeof isAdminAuthorized !== "function" || !isAdminAuthorized(request, env)) return unauthorized();
+  // Login/saída por PIN (owner-pin.mjs): rotas próprias, com CSRF e limite de tentativas; não exigem sessão.
+  if (url.pathname === OWNER_PIN_PATHS.login) return handlePinLogin(request, env);
+  if (url.pathname === OWNER_PIN_PATHS.logout) return handlePinLogout(request, env);
+  const basicOk = typeof isAdminAuthorized === "function" && isAdminAuthorized(request, env);
+  if (!basicOk && !(await hasPinSession(request, env))) {
+    // Com PIN ligado, a página mostra o formulário de PIN (sem o diálogo de usuário/senha do navegador).
+    if (pinConfigured(env) && request.method === "GET" && (url.pathname === OWNER_CHAT_PATHS.page || url.pathname === OWNER_CHAT_PATHS.app)) return new Response(PIN_PAGE, { status: 200, headers: PIN_PAGE_HEADERS });
+    if (pinConfigured(env)) return json({ error: "auth_required" }, 401);
+    return unauthorized();
+  }
   if (url.pathname === OWNER_CHAT_PATHS.page) return new Response(null, { status: 302, headers: { location: OWNER_CHAT_PATHS.app, "cache-control": "no-store" } });
   if (url.pathname === OWNER_CHAT_PATHS.app) {
     if (request.method !== "GET") return new Response(null, { status: 405 });
