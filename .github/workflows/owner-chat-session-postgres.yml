@@ -3,14 +3,15 @@ name: owner-chat-session-postgres
 # Chat do proprietário — sessão por PIN no PostgreSQL 16 REAL descartável (R1, R1.1, O1, R1.2; 26/11/2026).
 # Handler real do Worker; cada consulta é uma conexão própria (como o driver HTTP do Neon); transações seguradas de
 # verdade para provar a ordem revogação × leitura/envio/ação; corrida real logout × operações; tentativas de PIN
-# simultâneas; contraprovas com cópias mutantes (todas precisam ser DETECTADAS); prova de rollback contra o código de
-# produção (813870c2). Só pull_request e dispatch manual, sem segredo, sem rede além do checkout e da imagem do serviço.
+# simultâneas; contraprovas com cópias mutantes (todas precisam ser DETECTADAS); prova de rollback para a versão A em manutenção. Só pull_request e dispatch manual, sem segredo, sem rede além do checkout e da imagem do serviço.
 # Contagem EXATA: alterar os números no mesmo PR que muda os testes.
 on:
   pull_request:
     paths:
       - ".github/workflows/owner-chat-session-postgres.yml"
       - "worker/owner-chat.mjs"
+      - "worker/owner-chat-release.mjs"
+      - "ops/owner-chat-phase-a.sha"
       - "worker/owner-pin.mjs"
       - "worker/owner-session.mjs"
       - "tests/integration/owner-chat-session-postgres.test.mjs"
@@ -61,11 +62,10 @@ jobs:
           echo "::notice title=RACE::$(grep -oE 'OWNER_CHAT_PG_RACE .*' s.txt)"
           grep -qx "# tests 9" s.txt && grep -qx "# pass 9" s.txt && grep -qx "# skipped 0" s.txt && grep -qx "# todo 0" s.txt && grep -qx "# fail 0" s.txt && grep -qx "# cancelled 0" s.txt
           test "$(grep -c '^# OWNER_CHAT_PG_COUNTERPROOF .*=DETECTED$' s.txt)" = "6"
-      - name: Rollback seguro (R1.2) contra o código de produção 813870c2 (contagem exata)
+      - name: Rollback seguro (R1.2) para a fase A certificada (contagem exata)
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
-          PROD_WORKER_SHA: 813870c2
         run: |
           set -eo pipefail
           node --test tests/integration/owner-chat-rollback-postgres.test.mjs 2>&1 | grep -v '"event":"owner_chat_pin_failed"' | tee r.txt

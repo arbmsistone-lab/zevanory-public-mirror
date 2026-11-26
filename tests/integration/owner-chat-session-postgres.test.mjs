@@ -319,6 +319,32 @@ test("O1: 30 tentativas simultâneas do mesmo IP → exatamente 5 comparadas; 40
   assert.equal((await login(h, PIN, "10.1.1.1")).status, 200, "15 min depois da última tentativa contada");
   assert.equal(q1(`select n from zevanory_owner_chat_pin_attempts where scope = 'ip' and k = ${lit(ipKey)}`)[0].n, "0", "PIN certo devolveu a reserva");
   assert.equal((await login(harness(chat, { port: "1" }), PIN, "10.3.3.3")).status, 503);
+
+  // Uma devolução da janela anterior espera no PostgreSQL até a renovação fazer commit.
+  // Exercita a contabilidade diretamente, sem autenticar nem comparar nenhum PIN.
+  const windowIp = "window-isolation-fixture";
+  const oldReservation = await sess.reserveAttempt(h.sql, windowIp);
+  const wall = holder();
+  let renewed, release;
+  try {
+    await wall.step(`begin; update zevanory_owner_chat_pin_attempts
+      set last_at = now() - interval '16 minutes' where scope = 'ip' and k = ${lit(windowIp)};`);
+    renewed = sess.reserveAttempt(h.sql, windowIp);
+    assert.ok(await until(() => waiting() === 1), "reserva posterior aguarda a trava da linha");
+    release = sess.releaseAttempt(h.sql, windowIp, oldReservation);
+    assert.ok(await until(() => waiting() === 2), "devolução aguarda atrás da reserva posterior");
+    await wall.step("commit;");
+    const reservation = await renewed;
+    await release;
+    assert.notEqual(reservation.ipWindowId, oldReservation.ipWindowId);
+    assert.equal(n1(`select n from zevanory_owner_chat_pin_attempts where scope = 'ip' and k = ${lit(windowIp)}`), 1);
+    await sess.releaseAttempt(h.sql, windowIp, reservation);
+    assert.equal(n1(`select n from zevanory_owner_chat_pin_attempts where scope = 'ip' and k = ${lit(windowIp)}`), 0);
+    console.log("OWNER_CHAT_PG_WINDOW_ISOLATION=PASS");
+  } finally {
+    await wall.end();
+    await Promise.allSettled([renewed, release]);
+  }
 });
 
 // ---------- Contraprovas efetivas (cópias mutantes do Worker contra o mesmo PostgreSQL) ----------

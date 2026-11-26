@@ -80,7 +80,7 @@ export async function handlePinLogin(request, env = {}, { sql, authority = SESSI
   // Bloqueado: o PIN NÃO é comparado e a reserva é devolvida (como antes, tentativa bloqueada não conta erro nem
   // renova a janela). Sob concorrência a contagem pode ficar momentaneamente acima do limite: só bloqueia a mais.
   if (res.ipN > PIN_IP_MAX || res.globalN > PIN_GLOBAL_MAX) {
-    try { await releaseAttempt(sql, ipHash, res.globalKey); } catch { /* fica contada: conservador */ }
+    try { await releaseAttempt(sql, ipHash, res); } catch { /* fica contada: conservador */ }
     return json({ error: "locked", retry_after_s: res.ipN > PIN_IP_MAX ? PIN_IP_WINDOW_S : 3600 }, 429);
   }
   const ok = /^\d{6}$/.test(pin) && (await samePin(pin, String(env.OWNER_CHAT_PIN)));
@@ -88,7 +88,7 @@ export async function handlePinLogin(request, env = {}, { sql, authority = SESSI
     console.warn(JSON.stringify({ event: "owner_chat_pin_failed", ip_attempts: res.ipN, global_attempts: res.globalN }));
     return json({ error: "pin_incorreto", restantes: Math.max(0, PIN_IP_MAX - res.ipN) }, 401);
   }
-  try { await releaseAttempt(sql, ipHash, res.globalKey); } catch { /* fica contada: conservador */ }
+  try { await releaseAttempt(sql, ipHash, res); } catch { /* fica contada: conservador */ }
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const token = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
   // O cookie só sai depois do commit da sessão no banco.

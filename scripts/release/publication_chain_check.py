@@ -8,7 +8,7 @@ Modo padrão (sem rede): lê os YAML deste checkout e prova, com falha fechada:
   C3 os deploys só rodam em gh-pages (push/dispatch) e o pré-guarda T1 (promotion_guard.py) precede a promoção;
   C4 cada Worker recebe o SHA esperado: --tag com o SHA do evento e leitura de volta exigindo esse SHA
      (central: /api/release deployment.commit_sha; vendas: /health release);
-  C5 rollback automático: central => "wrangler rollback --name zevanory" (versão anterior) quando o smoke pós-deploy
+  C5 rollback automático: central => versão certificada de manutenção quando o smoke pós-deploy
      falha depois de um deploy bem-sucedido; vendas => restaura o snapshot da implantação anterior (versões e
      percentuais) quando a leitura canônica falha; sem snapshot, nada é apagado e a execução falha;
   C6 portão T1: estado NAO_COMPROVADO falha a execução sem rollback;
@@ -103,9 +103,16 @@ def static_checks(chk):
         and "--verify-promoted" in rb and "--readback-path release" in rb)
     # C5: rollback automático.
     roll_c, if_c = cd["Automatic rollback after failed post-deploy smoke"]
-    chk("C5 central: automatic rollback to the previous version on failed smoke after a successful deploy",
+    target_c, target_if = cd["Resolve certified owner-chat rollback target"]
+    chk("C5 central: resolve exact maintenance version before publishing",
+        list(cd).index("Resolve certified owner-chat rollback target") < list(cd).index("Deploy repaired production worker")
+        and "owner-chat-rollback-target.py" in target_c and "steps.auth.outputs.available" in target_if)
+    chk("C5 central: only the certified phase A may be rolled back to after failed or ambiguous publication",
         "failure()" in if_c and "steps.deployworker.outcome == 'success'" in if_c
-        and re.search(r"wrangler@[\d.]+ rollback --name zevanory\b", roll_c) and "--version" not in roll_c
+        and "steps.deployworker.outcome == 'failure'" in if_c
+        and re.search(r'wrangler@[\d.]+ rollback "\$OWNER_CHAT_ROLLBACK_ID" --name zevanory\b', roll_c)
+        and roll_c.index("OWNER_CHAT_ROLLBACK_BLOCKED") < roll_c.index("wrangler@")
+        and '--candidate "$OWNER_CHAT_ROLLBACK_SHA"' in roll_c
         and "verify-rollback-health.py" in roll_c, step_if=if_c)
     snap = sd["Snapshot active canonical deployment"][0]
     roll_s, if_s = sd["Roll back canonical deployment on failed readback"]

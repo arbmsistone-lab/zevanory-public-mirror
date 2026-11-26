@@ -13,6 +13,12 @@ export GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-arbmsistone-lab/zevanory-public-m
 export GITHUB_SHA="$SHA"
 echo "ZEVANORY_CLOUDFLARE_BUILD_SHA=$SHA"
 
+# R1.2: reserve builds lack the canonical pipeline's rollback/readback controls.
+if [ -f worker/owner-chat-release.mjs ]; then
+  echo "OWNER_CHAT_CUTOVER_CANONICAL_ONLY: use the controlled central pipeline."
+  exit 1
+fi
+
 # Workers Builds clones shallowly; the canonical static base needs full history.
 git fetch --quiet --unshallow origin 2>/dev/null || true
 git fetch --quiet origin final-83620c6 || git fetch --quiet origin 83620c680958d726fc4b0fd16e2574cdcc362a6d

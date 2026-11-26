@@ -324,7 +324,12 @@ def evaluate(root: Path) -> dict:
                     "autorização escrita para serializar e pôr a recuperação sob o guard (controlar, não destruir)"))
     rb = services.get("zevanory-product-control-portable", {}).get("exceptions", {}).get("rollback")
     central = texts.get("central-production-deploy.yml", "")
-    c6.append(check("6b", PROVEN if rb and "rollback --name zevanory" in central else NOT_PROVEN, "caminhos de rollback documentados nos publicadores canônicos",
+    central_pinned_rollback = all(marker in central for marker in (
+        'rollback "$OWNER_CHAT_ROLLBACK_ID" --name zevanory',
+        'owner-chat-rollback-target.py --verify-active',
+        'OWNER_CHAT_ROLLBACK_BLOCKED',
+    ))
+    c6.append(check("6b", PROVEN if rb and central_pinned_rollback else NOT_PROVEN, "caminhos de rollback documentados nos publicadores canônicos",
                     [reg_ev, repo.evidence(".github/workflows/central-production-deploy.yml")], "rollback documentado ausente"))
     c6.append(check("6c", NOT_PROVEN, "rollback da esteira oficial ensaiado (execução real registrada)", [],
                     "nenhum registro de ensaio executado neste SHA." + owner_declared(repo, "rollback_rehearsal"),

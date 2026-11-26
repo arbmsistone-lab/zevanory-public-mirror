@@ -268,7 +268,7 @@ export async function runOwnerChatRetention(env, { sqlFactory } = {}) {
     const a = await sql.query(`/*owner-chat:retention-ai*/ with d as (delete from zevanory_owner_chat_ai_usage where day < current_date - 60 returning 1) select count(*)::int as n from d`, []);
     await ensureSessionSchema(sql);
     const s = await sessionRetention(sql);
-    // R1.2: sessões antigas do KV nunca voltam a existir (defesa contra rollback para código anterior).
+    // R1.2: limpeza auxiliar do KV antigo. O rollback depende da versão em manutenção.
     const purge = await purgeLegacyKvSessions(env.ZEVANORY_PRIVATE_ARTIFACTS, { force: true }).catch(() => ({ ok: false }));
     return { ok: true, messages: Number(m[0]?.n || 0), ai_days: Number(a[0]?.n || 0), sessions: s.sessions, pin_attempts: s.attempts, legacy_kv_sessions_deleted: purge.deleted ?? null };
   } catch { return { ok: false, code: "retention_failed" }; }
@@ -335,6 +335,14 @@ export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sq
   const sqlOrNull = async () => { try { return await getSql(); } catch { conn = null; return null; } };
   // R1.2: sessões do formato antigo (KV) nunca valem e são apagadas (uma vez por isolate; também na retenção diária).
   if (pinConfigured(env)) { try { await purgeLegacyKvSessions(env.ZEVANORY_PRIVATE_ARTIFACTS); } catch {} }
+  if (sessionAuthority === "maintenance") {
+    if (url.pathname === OWNER_PIN_PATHS.login) return handlePinLogin(request, env, { authority: sessionAuthority });
+    if (pinConfigured(env) && request.method === "GET" && (url.pathname === OWNER_CHAT_PATHS.page || url.pathname === OWNER_CHAT_PATHS.app)) {
+      return new Response(PIN_PAGE, { status: 200, headers: PIN_PAGE_HEADERS });
+    }
+    if (request.method === "POST" && url.pathname === OWNER_PIN_PATHS.logout) return json({ error: "owner_chat_maintenance" }, 503);
+    return json({ error: "auth_required" }, 401);
+  }
   // Login/saída por PIN (owner-pin.mjs): rotas próprias, com CSRF e limite de tentativas; não exigem sessão.
   if (url.pathname === OWNER_PIN_PATHS.login) return handlePinLogin(request, env, { sql: await sqlOrNull(), authority: sessionAuthority });
   if (url.pathname === OWNER_PIN_PATHS.logout) return handlePinLogout(request, env, { sql: await sqlOrNull() });

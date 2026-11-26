@@ -3,7 +3,7 @@ export function fakeSql() {
   const rows = []; let seq = 0; let cseq = 0; const ai = new Map(); const log = []; let clock = Date.parse("2026-11-12T23:00:00Z");
   const lock = { holder: null, since: null }; const neurons = { n: 0, fail: false }; const vstate = new Map();
   // Sessões e tentativas de PIN (worker/owner-session.mjs), com injeção de falha por operação.
-  const sessions = new Map(); const attempts = new Map(); const sfail = { check: false, create: false, revoke: false, reserve: false, pending: false };
+  let nextIpWindow = 0; const sessions = new Map(); const attempts = new Map(); const sfail = { check: false, create: false, revoke: false, reserve: false, pending: false };
   const valid = (h) => { const x = sessions.get(h); return !!x && x.revoked === null && x.expires > clock; };
   const out = (r) => ({ id: String(r.id), seq: String(r.seq ?? r.id), created_at: new Date(r.created_at).toISOString(), sender: r.sender, kind: r.kind, body: r.body, action_type: r.action_type, action_expires_at: r.action_expires_at ? new Date(r.action_expires_at).toISOString() : null, action_state: r.action_state });
   return { rows, log, lock, neurons, vstate, sessions, attempts, sfail, valid, tick: (ms) => { clock += ms; }, query: async (text, p = []) => {
@@ -18,11 +18,17 @@ export function fakeSql() {
       if (sfail.reserve) throw new Error("db");
       const ik = "ip:" + p[0]; const gk = "global:" + new Date(clock).toISOString().slice(0, 13);
       const i = attempts.get(ik); const reset = !i || i.last <= clock - p[1] * 1000;
-      const ni = reset ? { n: 1, last: clock } : { n: i.n + 1, last: i.n >= p[2] ? i.last : clock }; attempts.set(ik, ni);
+      const ni = reset ? { n: 1, last: clock, window: ++nextIpWindow } : { n: i.n + 1, last: i.n >= p[2] ? i.last : clock, window: i.window }; attempts.set(ik, ni);
       const g = attempts.get(gk); const ng = { n: (g?.n || 0) + 1, last: clock }; attempts.set(gk, ng);
-      return [{ ip_n: ni.n, g_n: ng.n, g_k: gk.slice(7) }];
+      return [{ ip_n: ni.n, g_n: ng.n, g_k: gk.slice(7), ip_window_id: ni.window }];
     }
-    if (tag === "pin-release") { for (const k of ["ip:" + p[0], "global:" + p[1]]) { const x = attempts.get(k); if (x) x.n = Math.max(0, x.n - 1); } return []; }
+    if (tag === "pin-release") {
+      const ip = attempts.get("ip:" + p[0]);
+      const global = attempts.get("global:" + p[1]);
+      if (ip && ip.window === p[2]) ip.n = Math.max(0, ip.n - 1);
+      if (global) global.n = Math.max(0, global.n - 1);
+      return [];
+    }
     if (tag === "retention-sessions") { let n = 0; for (const [h, x] of sessions) if (x.expires < clock - 7 * 86400000) { sessions.delete(h); n++; } return [{ n }]; }
     if (tag === "retention-attempts") { let n = 0; for (const [k, x] of attempts) if (x.last < clock - 2 * 86400000) { attempts.delete(k); n++; } return [{ n }]; }
     if (tag === "insert") {
