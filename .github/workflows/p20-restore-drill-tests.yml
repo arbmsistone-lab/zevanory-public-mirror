@@ -84,12 +84,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Lógica do ensaio, da cifragem, da cópia KV -> Neon, do diário D1 e do plano v2 (contagem exata 50, zero pulados)
+      - name: Lógica do ensaio, da cifragem, da cópia KV -> Neon, do diário D1 e do plano v2 (contagem exata 51, zero pulados)
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/p20-restore-drill.test.mjs tests/p20-backup-encryption.test.mjs tests/p20-kv-copy-drill.test.mjs tests/p20-diario-ensaio.test.mjs tests/p20-particoes-v2.test.mjs | tee /tmp/t.txt
-          for l in "# tests 50" "# pass 50" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          for l in "# tests 51" "# pass 51" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
       - name: Ponta a ponta no PostgreSQL efêmero (código real do Worker -> ensaio completo)
         shell: bash
         env:
@@ -127,7 +127,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p20_v2.py < /dev/null | tee /tmp/mutv2.txt
           echo "::notice title=P20_V2_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mutv2.txt)"
-          grep -qx "MUTANTS total=44 killed=44 survived=0 inconclusive=0" /tmp/mutv2.txt || { echo "::error::mutante do v2 sobreviveu ou ficou inconclusivo"; exit 1; }
+          grep -qx "MUTANTS total=45 killed=45 survived=0 inconclusive=0" /tmp/mutv2.txt || { echo "::error::mutante do v2 sobreviveu ou ficou inconclusivo"; exit 1; }
       - name: Mutantes causais (todos precisam morrer)
         shell: bash
         run: |

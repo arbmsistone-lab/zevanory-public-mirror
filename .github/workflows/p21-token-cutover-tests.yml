@@ -57,7 +57,7 @@ jobs:
           python3 -m unittest -v tests/test_p21_token_cutover.py < /dev/null 2>&1 | tee /tmp/p21.txt
           grep -Eq '^Ran 11 tests in ' /tmp/p21.txt || { echo "::error::esperados 11 testes"; exit 1; }
           grep -qx "OK" /tmp/p21.txt || { echo "::error::teste do interruptor falhou"; exit 1; }
-          grep -qx "MUTANTS total=22 killed=22 survived=0" /tmp/p21.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=28 killed=28 survived=0" /tmp/p21.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Escopo efetivo dos tokens (contagem exata 7, 12 mutantes mortos)
         shell: bash
         run: |

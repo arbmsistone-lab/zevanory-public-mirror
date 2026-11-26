@@ -43,7 +43,7 @@ def build_source(db):
       insert into zevanory_kv_backup(snapshot_day,key,value,sha256) values ('2026-10-14','sales:open:v1','{{"enabled":false}}','abc');""")
     # Exportação idêntica à do Worker (data-backup.mjs): json_agg por tabela, 3 partes, sem tabelas sensíveis.
     names = sh(db, "select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE' and table_name <> 'zevanory_kv_backup_unused' order by 1").split()
-    names = [n for n in names if not bpa.re.search(r"credential|oauth|secret|token|password", n)]
+    names = [n for n in names if not bpa.re.search(r"credential|oauth|secret|token|password|^zevanory_owner_chat_(sessions|pin_attempts)$", n)]
     parts = {0: {}, 1: {}, 2: {}}
     for i, t in enumerate(names):
         js = sh(db, f"select coalesce(json_agg(x), '[]'::json)::text from public.\"{t}\" x").strip()

@@ -50,7 +50,7 @@ test("rotas de fora não são capturadas; /admin/proprietario redireciona para a
   const r = await h.call(req("/admin/proprietario"));
   assert.equal(r.status, 302); assert.equal(r.headers.get("location"), "/api/admin/owner-chat/app");
   const p = await h.call(req("/api/admin/owner-chat/app"));
-  assert.equal(p.status, 200); assert.match(p.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+  assert.equal(p.status, 200); assert.match(p.headers.get("content-security-policy"), /frame-ancestors https:\/\/controle\.zevanory\.api\.br(;|$)/);
   assert.match(p.headers.get("x-robots-tag"), /noindex/); assert.match(await p.text(), /Chat do Proprietário/);
 });
 
@@ -274,7 +274,7 @@ test("feed por sequência de commit: 1.100 mensagens chegam todas, em ordem, sem
   assert.deepEqual([again.messages.length, again.cursor], [0, cur]);
   const src = readTextNormalized(new URL("../worker/owner-chat.mjs", import.meta.url));
   assert.match(src, /with c as \(insert into zevanory_owner_chat_seq \(k, n\) values \(1, 1\)\s+on conflict \(k\) do update set n = zevanory_owner_chat_seq\.n \+ 1 returning n\)/);
-  assert.match(src, /where seq > \$1::bigint order by seq asc/); assert.doesNotMatch(src, /RECENT_OVERLAP/);
+  assert.match(src, /where seq > \$1::bigint and \(\$3::text is null or \$\{SESSION_VALID_SQL\(3\)\}\) order by seq asc/); assert.doesNotMatch(src, /RECENT_OVERLAP/);
   const page = await (await h.call(req("/api/admin/owner-chat/app"))).text();
   assert.match(page, /qs\.set\('after',cur\)/); assert.match(page, /cur=j\.cursor/); assert.doesNotMatch(page, /maxId/);
 });
@@ -333,11 +333,15 @@ async function mutant(name, from, to, check) {
 }
 test("mutantes morrem", async () => {
   const H = (m, opts = {}) => { const h = harness(opts); return { ...h, call: (r) => m.handleOwnerChat(r, h.env, h.deps) }; };
-  await mutant("sem-auth", "if (!basicOk && !(await hasPinSession(request, env))) {", "if (false) {", async (m) =>
+  await mutant("sem-auth", "    if (!valid) {", "    if (false) {", async (m) =>
     (await H(m).call(new Request(ORIGIN + "/api/admin/owner-chat/feed"))).status === 401);
   await mutant("sem-csrf", "if (request.method !== \"POST\" || !sameOrigin(request, url))", "if (request.method !== \"POST\")", async (m) =>
-    (await H(m).call(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "status" }, headers: { origin: "https://evil.example" } }))).status === 403);
-  await mutant("acao-sem-trava", "and action_state = 'proposta' and action_expires_at > now() returning action_type", "and action_expires_at > now() returning action_type", async (m) => {
+    // Origem estrangeira agora cai antes, no CA-11 (mutante próprio abaixo); aqui o que só o CSRF garante: mesma origem
+    // sem o cabeçalho x-owner-chat (formulário/navegação) continua 403.
+    (await H(m).call(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "status" }, headers: { "x-owner-chat": "0" } }))).status === 403);
+  await mutant("sem-origem-api", "&& !sameOriginApi(request, url)) return", "&& false) return", async (m) =>
+    (await H(m).call(req("/api/admin/owner-chat/feed", { headers: { origin: "https://outro.zevanory.api.br" } }))).status === 403);
+  await mutant("acao-sem-trava", "and action_state = 'proposta' and action_expires_at > now() and (", "and action_expires_at > now() and (", async (m) => {
     // o falso reproduz a trava pelo SQL: sem a cláusula, a linha volta a ser reivindicável
     const h = H(m, { kv: memKv({ [PAUSE]: "1" }) });
     const sql = h.sql, orig = sql.query;

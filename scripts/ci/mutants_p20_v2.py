@@ -126,6 +126,10 @@ M = {
     # parte ainda bloqueia o KV, mas a reivindicação mudaria dono, updated_at e partes chamadas do dia concluído.
     "V44 reivindicação sem exigir dia em andamento": (W, "      where zevanory_backup_day.state = 'running'\n        and (", "      where (",
                                                       ("py", "test_n15_dia_concluido_execucao_b_falha_sem_tocar_a")),
+    # Decisão do proprietário 26/11/2026 (P20 do chat do proprietário): sessões por PIN e tentativas de PIN fora do backup.
+    "V45 sessões e tentativas de PIN copiadas no backup": (W, "export const SENSITIVE = { test: (t) => CREDENTIAL_TABLE.test(t) || EPHEMERAL_SECURITY_TABLE.test(t) };",
+                                                         "export const SENSITIVE = { test: (t) => CREDENTIAL_TABLE.test(t) };",
+                                                         ("node", "segurança efêmera do chat do proprietário")),
 }
 
 
