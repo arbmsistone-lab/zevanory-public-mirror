@@ -36,7 +36,13 @@ export const MAX_PARTS = 6;
 export const CONTRACT_V2 = 2;
 export const PLAN_SCHEMA = "zevanory-backup-plan/v2";
 // Credentials are not duplicated into another store: they can be re-issued, a copy only widens exposure.
-export const SENSITIVE = /credential|oauth|secret|token|password/i;
+const CREDENTIAL_TABLE = /credential|oauth|secret|token|password/i;
+// P20 (decisão do proprietário, 26/11/2026): dados efêmeros de segurança do chat do proprietário. As linhas de sessões
+// por PIN e de tentativas de PIN NUNCA entram no backup: uma restauração não pode reativar sessão (nem uma revogada
+// depois da cópia) nem devolver contadores antigos. O esquema volta pelo próprio Worker (create ... if not exists);
+// depois de restaurar, as tabelas ficam vazias: toda sessão anterior é recusada e exige novo PIN.
+export const EPHEMERAL_SECURITY_TABLE = /^zevanory_owner_chat_(sessions|pin_attempts)$/;
+export const SENSITIVE = { test: (t) => CREDENTIAL_TABLE.test(t) || EPHEMERAL_SECURITY_TABLE.test(t) };
 export const DRILL_SAMPLE = 20;
 export const KV_COPY_FORMAT = "zevanory-kv-copy/v1";
 export const kvCopyKeyFor = (day) => `zpc:backup:v1:kv:${day}`;
@@ -361,7 +367,7 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     // no banco é mudança de inventário (falha). v1 (legado): índice entre TODAS as tabelas (inclui as de credencial).
     if (v2) for (const t of myTables) if (!stats.some((s) => s.t === t)) fail("inventory_changed");
     stats.forEach(({ t, n }, i) => {
-      if (SENSITIVE.test(t)) { if (part === 0) excluded.push({ table: t, rows: n, reason: "credenciais_nao_duplicadas" }); return; }
+      if (SENSITIVE.test(t)) { if (part === 0) excluded.push({ table: t, rows: n, reason: EPHEMERAL_SECURITY_TABLE.test(t) ? "seguranca_efemera_nao_restaurada" : "credenciais_nao_duplicadas" }); return; }
       if (v2 ? !myTables.includes(t) : i % parts !== part) return;
       if (!validIdent(t)) { skipped.push({ table: t, reason: "name" }); fail("not_backed_up:" + t); }
       else if (n > MAX_TABLE_ROWS) { skipped.push({ table: t, rows: n, reason: "rows_over_cap" }); fail("not_backed_up:" + t); }

@@ -159,6 +159,20 @@
       "fora_do_backup_por_politica": true
     },
     {
+      "id": "seguranca_efemera",
+      "nome": "Segurança efêmera do chat do proprietário (sessões por PIN e tentativas de PIN)",
+      "onde_vive": "Neon",
+      "fonte_da_verdade": "Neon, só enquanto vigente: sessão vale até 12 h ou até a revogação; tentativa conta até 1 h",
+      "reconstrucao_por_conciliacao": "Não se reconstrói nem se restaura: depois de uma restauração as tabelas ficam vazias (esquema recriado pelo Worker), toda sessão anterior é recusada e o proprietário digita o PIN de novo; os contadores recomeçam vazios, com os mesmos limites (5 por IP em 15 min, 20 por hora)",
+      "backup": "Fora do backup por política (classificação aprovada pelo proprietário em 26/11/2026 para o chat; o inventário 9.1 segue PROPOSTA até a aprovação formal dele): linhas nunca copiadas, para que nenhuma restauração reative sessão revogada ou expirada nem reponha contadores",
+      "rpo_objetivo_h": null,
+      "rto_objetivo_h": null,
+      "integridade": "Esquema pelo Worker (create table if not exists); dados não restauráveis por desenho",
+      "status": "PROPOSTA",
+      "tables": ["zevanory_owner_chat_pin_attempts", "zevanory_owner_chat_sessions"],
+      "fora_do_backup_por_politica": true
+    },
+    {
       "id": "codigo_configuracao",
       "nome": "Código e configuração",
       "onde_vive": "Git + Cloudflare",
