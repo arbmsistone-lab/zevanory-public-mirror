@@ -1,0 +1,360 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "as_of": "2026-10-14",
+    "market": "BR",
+    "status": "proposal_only_not_authorized",
+    "publication_allowed": false,
+    "merge_allowed": false,
+    "deploy_allowed": false,
+    "paid_media_allowed": false,
+    "financial_tests_allowed": false,
+    "purchases_allowed": false,
+    "personal_data_allowed": false,
+    "additional_cost_brl": 0,
+    "ranking_formula": "impact + evidence + ease + safety + zero_cost; each 0..3; ties use lexicographic opportunity id only",
+    "warning": "Pontuações ordenam hipóteses para teste; não estimam receita, conversão ou resultado."
+  },
+  "opportunities": [
+    {
+      "rank": 1,
+      "id": "attribution-continuity",
+      "title": "Preservar atribuição entre conteúdo gratuito, produto e intenção",
+      "score": {
+        "impact": 3,
+        "evidence": 3,
+        "ease": 3,
+        "safety": 3,
+        "zero_cost": 3
+      },
+      "total": 15,
+      "evidence": [
+        "code-sales-router",
+        "code-funnel"
+      ],
+      "finding": "Links internos para páginas de produto não fazem parte do carryUtm; pedidos agregados não carregam source/campaign.",
+      "recommended_action": "Primeiro preservar UTMs válidas nos saltos internos e provar a continuidade em matriz controlada, sem PII."
+    },
+    {
+      "rank": 2,
+      "id": "catalog-problem-first",
+      "title": "Reduzir sobrecarga de escolha no catálogo",
+      "score": {
+        "impact": 3,
+        "evidence": 2,
+        "ease": 2,
+        "safety": 3,
+        "zero_cost": 3
+      },
+      "total": 13,
+      "evidence": [
+        "code-store",
+        "live-store"
+      ],
+      "finding": "A página reúne ofertas em breve, cinco produtos digitais, assinatura, guias e ferramentas no mesmo nível.",
+      "recommended_action": "Testar um bloco inicial por problema que encaminhe para IA, vendas ou caixa, preservando o catálogo completo abaixo."
+    },
+    {
+      "rank": 3,
+      "id": "existing-proof-before-purchase",
+      "title": "Usar prova prática existente antes da compra",
+      "score": {
+        "impact": 2,
+        "evidence": 2,
+        "ease": 3,
+        "safety": 3,
+        "zero_cost": 3
+      },
+      "total": 13,
+      "evidence": [
+        "code-product-pages",
+        "live-product"
+      ],
+      "finding": "As páginas detalham escopo e entrega, mas a prova prática fica espalhada em calculadoras, checklist e guias.",
+      "recommended_action": "Testar CTA secundário para um recurso gratuito já existente e relevante, sem criar novo conteúdo."
+    },
+    {
+      "rank": 4,
+      "id": "aggregate-source-to-paid",
+      "title": "Vincular pagamento a origem apenas de forma agregada",
+      "score": {
+        "impact": 3,
+        "evidence": 3,
+        "ease": 1,
+        "safety": 2,
+        "zero_cost": 3
+      },
+      "total": 12,
+      "evidence": [
+        "code-funnel",
+        "code-sales-router"
+      ],
+      "finding": "Resumo associa receita ao produto, mas não source/campaign aos pagamentos.",
+      "recommended_action": "Avaliar desenho privacy-first separado; não implementar até revisão operacional e de dados."
+    },
+    {
+      "rank": 5,
+      "id": "field-performance-baseline",
+      "title": "Criar baseline de desempenho de campo",
+      "score": {
+        "impact": 2,
+        "evidence": 2,
+        "ease": 1,
+        "safety": 3,
+        "zero_cost": 3
+      },
+      "total": 11,
+      "evidence": [
+        "google-web-vitals",
+        "live-product"
+      ],
+      "finding": "Não foram encontrados agregados LCP, INP ou CLS no resumo atual.",
+      "recommended_action": "Avaliar RUM agregado e limitado; laboratório não pode ser tratado como comportamento real."
+    },
+    {
+      "rank": 6,
+      "id": "real-social-proof",
+      "title": "Exibir avaliações somente quando houver prova suficiente",
+      "score": {
+        "impact": 2,
+        "evidence": 1,
+        "ease": 2,
+        "safety": 2,
+        "zero_cost": 3
+      },
+      "total": 10,
+      "evidence": [
+        "code-sales-router",
+        "google-product-data"
+      ],
+      "finding": "O código já condiciona prova social; não há evidência nesta auditoria para declarar volume ou nota.",
+      "recommended_action": "Manter bloqueado até avaliações reais, origem auditável e limiar já definido."
+    }
+  ],
+  "experiments": [
+    {
+      "id": "exp-c4-01-attribution-continuity",
+      "priority": 1,
+      "title": "Continuidade de UTM até a intenção",
+      "type": "measurement_readiness",
+      "status": "proposal_only",
+      "implementation_owner": "Claude",
+      "codex_implementation": false,
+      "owner_approval_required": true,
+      "hypothesis": "Se UTMs válidas forem preservadas nos links internos de conteúdo/ferramenta para produto e intenção, a jornada poderá ser analisada por campanha sem cookie ou dado pessoal.",
+      "scope": [
+        "links internos para os cinco produtos",
+        "GET /comprar/<SKU>",
+        "resumo agregado de source/campaign"
+      ],
+      "excluded": [
+        "POST financeiro",
+        "criação de order real",
+        "dados pessoais",
+        "mudança no provedor"
+      ],
+      "baseline": {
+        "value": null,
+        "reason": "o resumo atual não mede continuidade entre estágios"
+      },
+      "design": {
+        "environment": "staging_or_isolated_preview",
+        "traffic": "synthetic_non_financial_matrix",
+        "duration_max_days": 7,
+        "variants": [
+          "current_control",
+          "utm_continuity_candidate"
+        ],
+        "minimum_observations_per_variant": 25
+      },
+      "primary_indicator": {
+        "name": "valid_campaign_continuity_ratio",
+        "formula": "navegações com source/campaign idênticos no próximo estágio / navegações válidas",
+        "source": "agregado de teste sem PII"
+      },
+      "decision_rule": {
+        "success": "ratio >= 0.95, zero rótulo inválido e zero alteração de checkout",
+        "inconclusive": "menos de 25 observações por variante ao fim de 7 dias",
+        "failure": "qualquer perda de UTM válida, dado pessoal ou efeito em ordem/pagamento"
+      },
+      "stop_conditions": [
+        "qualquer POST para checkout",
+        "qualquer ordem criada",
+        "campo pessoal no evento",
+        "host ou UTM fora da allowlist",
+        "regressão funcional"
+      ],
+      "evidence": [
+        "code-sales-router",
+        "code-funnel"
+      ],
+      "estimated_cost_brl": 0,
+      "merge_allowed": false,
+      "deploy_allowed": false
+    },
+    {
+      "id": "exp-c4-02-catalog-problem-first",
+      "priority": 2,
+      "title": "Entrada do catálogo orientada pelo problema",
+      "type": "conversion_experiment",
+      "status": "proposal_only",
+      "implementation_owner": "Claude",
+      "codex_implementation": false,
+      "owner_approval_required": true,
+      "hypothesis": "Se o topo de /solucoes oferecer três caminhos claros — IA, vendas e caixa — mais visitantes avançarão para uma página de produto sem remover o catálogo completo.",
+      "scope": [
+        "topo de /solucoes",
+        "links para IA na Prática, Vendas na Prática e Lucro & Caixa"
+      ],
+      "excluded": [
+        "preços",
+        "checkout",
+        "produtos em produção",
+        "mensagens automáticas"
+      ],
+      "baseline": {
+        "value": null,
+        "reason": "não há variante nem clique de caminho identificado no resumo atual"
+      },
+      "design": {
+        "environment": "production_only_after_owner_authorization",
+        "allocation": "50/50 stable anonymous variant",
+        "duration_max_days": 28,
+        "minimum_clean_visitors_per_variant": 200,
+        "variants": [
+          "catalog_current",
+          "problem_first"
+        ]
+      },
+      "primary_indicator": {
+        "name": "catalog_to_product_rate",
+        "formula": "visitas limpas às três páginas de produto / visitantes limpos de /solucoes por variante",
+        "source": "funnel agregado"
+      },
+      "guardrails": [
+        "checkoutErrors não pode piorar",
+        "links e preços devem permanecer idênticos",
+        "Core Web Vitals não pode regredir após baseline",
+        "nenhum dado pessoal"
+      ],
+      "decision_rule": {
+        "success": "intervalo de confiança bilateral de 95% para a diferença de proporções fica totalmente acima de zero, com guardrails verdes",
+        "inconclusive": "amostra mínima não atingida em 28 dias ou intervalo inclui zero",
+        "failure": "diferença negativa com significância ou qualquer guardrail vermelho"
+      },
+      "stop_conditions": [
+        "link quebrado",
+        "preço ou SKU divergente",
+        "vendas fechadas",
+        "erro de acessibilidade",
+        "instrumentação inconsistente"
+      ],
+      "dependencies": [
+        "exp-c4-01-attribution-continuity"
+      ],
+      "evidence": [
+        "code-store",
+        "live-store",
+        "google-web-vitals"
+      ],
+      "estimated_cost_brl": 0,
+      "merge_allowed": false,
+      "deploy_allowed": false
+    },
+    {
+      "id": "exp-c4-03-existing-proof-cta",
+      "priority": 3,
+      "title": "Prova prática existente como CTA secundário",
+      "type": "conversion_experiment",
+      "status": "proposal_only",
+      "implementation_owner": "Claude",
+      "codex_implementation": false,
+      "owner_approval_required": true,
+      "hypothesis": "Se cada página de produto oferecer uma prova prática existente e coerente como CTA secundário, visitantes indecisos poderão validar o método sem promessa e retornar mais qualificados à intenção de compra.",
+      "scope": [
+        "IA na Prática → guias por ramo",
+        "Vendas na Prática → guias WhatsApp",
+        "Lucro & Caixa → calculadora de fluxo",
+        "Combo e Negócio Completo → checklist"
+      ],
+      "excluded": [
+        "novo conteúdo",
+        "desconto",
+        "urgência artificial",
+        "checkout",
+        "captura adicional de dados"
+      ],
+      "baseline": {
+        "value": null,
+        "reason": "não existe variante identificada nem taxa por CTA secundário"
+      },
+      "design": {
+        "environment": "production_only_after_owner_authorization",
+        "allocation": "50/50 stable anonymous variant",
+        "duration_max_days": 28,
+        "minimum_clean_product_visitors_per_variant": 200,
+        "variants": [
+          "product_current",
+          "existing_proof_cta"
+        ]
+      },
+      "primary_indicator": {
+        "name": "product_to_checkout_intent_rate",
+        "formula": "checkout_intent / visitantes limpos das páginas de produto por variante",
+        "source": "funnel agregado"
+      },
+      "secondary_indicators": [
+        "cliques agregados no recurso gratuito",
+        "retorno agregado à página de produto quando mensurável sem identidade"
+      ],
+      "guardrails": [
+        "nenhuma promessa financeira",
+        "nenhum formulário adicional",
+        "checkoutErrors não pode piorar",
+        "CTA principal de compra permanece visível"
+      ],
+      "decision_rule": {
+        "success": "intervalo de confiança bilateral de 95% para a diferença de intenção fica totalmente acima de zero, com guardrails verdes",
+        "inconclusive": "amostra mínima não atingida em 28 dias ou intervalo inclui zero",
+        "failure": "queda significativa de intenção ou qualquer guardrail vermelho"
+      },
+      "stop_conditions": [
+        "CTA principal oculto",
+        "destino gratuito indisponível",
+        "UTM perdida",
+        "conteúdo divergente do produto",
+        "qualquer dado pessoal"
+      ],
+      "dependencies": [
+        "exp-c4-01-attribution-continuity"
+      ],
+      "evidence": [
+        "code-product-pages",
+        "live-product",
+        "code-funnel"
+      ],
+      "estimated_cost_brl": 0,
+      "merge_allowed": false,
+      "deploy_allowed": false
+    }
+  ],
+  "operational_handoff": {
+    "owner": "Claude",
+    "priority_constraint": "Marco A primeiro",
+    "status": "not_sent_by_code",
+    "items": [
+      "preservação de UTM em links internos",
+      "variantes agregadas e estáveis sem identidade",
+      "métricas por estágio e variante",
+      "avaliação separada de source/campaign até pago"
+    ],
+    "prohibited": [
+      "alterar checkout neste PR",
+      "publicar automaticamente",
+      "usar PII",
+      "criar compra de teste",
+      "alterar workflows"
+    ],
+    "note": "Cada implementação exige PR operacional separado, autorização do proprietário e auditoria independente."
+  }
+}

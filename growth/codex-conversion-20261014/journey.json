@@ -1,0 +1,280 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "as_of": "2026-10-14",
+    "market": "BR",
+    "canonical_sha": "c3717aeb325e7acc6108177426ca420e565bb575",
+    "scope": "discovery_to_checkout",
+    "contains_personal_data": false,
+    "production_read_only": true,
+    "purchases_performed": 0,
+    "forms_submitted": 0,
+    "admin_metrics_accessed": false,
+    "baseline_policy": "Nenhum valor foi inventado. Valores reais permanecem null porque a leitura agregada autenticada não foi necessária nem autorizada para esta entrega."
+  },
+  "stages": [
+    {
+      "order": 1,
+      "id": "discovery",
+      "label": "Descoberta",
+      "surfaces": [
+        "busca orgânica",
+        "YouTube",
+        "TikTok",
+        "Telegram",
+        "Bluesky",
+        "referências externas"
+      ],
+      "next": "content",
+      "evidence": [
+        "code-funnel",
+        "code-sales-router"
+      ],
+      "available_aggregate_metrics": [
+        "views por source",
+        "views por campaign",
+        "classe de tráfego",
+        "país agregado"
+      ],
+      "actual": null,
+      "strengths": [
+        "UTM curta e normalizada",
+        "fallback por domínio de referência",
+        "filtro de bots e datacenter"
+      ],
+      "gaps": [
+        "campanha é associada a visualizações, não a compradores pagos",
+        "origens sem UTM viram categorias amplas como direto, interno ou outro"
+      ]
+    },
+    {
+      "order": 2,
+      "id": "content",
+      "label": "Conteúdo",
+      "surfaces": [
+        "guias IA por ramo",
+        "guias WhatsApp",
+        "blog e materiais orgânicos"
+      ],
+      "next": "free_material",
+      "evidence": [
+        "code-funnel",
+        "live-store"
+      ],
+      "available_aggregate_metrics": [
+        "views e visitantes apenas em rotas rastreadas",
+        "source e campaign agregados"
+      ],
+      "actual": null,
+      "strengths": [
+        "guias e ferramentas gratuitas já existem",
+        "sem cookies para atribuição básica"
+      ],
+      "gaps": [
+        "três guias de WhatsApp continuam fora de TRACKED_PAGES",
+        "não há sequência agregada conteúdo→material→produto"
+      ]
+    },
+    {
+      "order": 3,
+      "id": "free_material",
+      "label": "Material gratuito",
+      "surfaces": [
+        "/material-gratuito",
+        "/checklist-15-minutos"
+      ],
+      "next": "interest",
+      "evidence": [
+        "code-lead-magnet",
+        "live-lead-magnet",
+        "code-sales-router"
+      ],
+      "available_aggregate_metrics": [
+        "views",
+        "visitantes",
+        "leads dos últimos 7 dias"
+      ],
+      "actual": null,
+      "strengths": [
+        "formulário curto",
+        "nome opcional",
+        "consentimento explícito",
+        "checklist abre após envio",
+        "double opt-in para marketing"
+      ],
+      "gaps": [
+        "subscribe_click existe no schema, mas o handler auditado não registra o envio do formulário por source/campaign",
+        "não há taxa agregada por variante ou campanha entre view e lead"
+      ]
+    },
+    {
+      "order": 4,
+      "id": "interest",
+      "label": "Interesse e prova prática",
+      "surfaces": [
+        "calculadoras",
+        "checklist",
+        "guias",
+        "comparação de soluções"
+      ],
+      "next": "product_page",
+      "evidence": [
+        "code-store",
+        "code-sales-router",
+        "live-store"
+      ],
+      "available_aggregate_metrics": [
+        "views por ferramenta",
+        "views por source e campaign"
+      ],
+      "actual": null,
+      "strengths": [
+        "sete calculadoras e materiais existentes podem servir como prova sem criar conteúdo novo",
+        "calculadoras ligam para Lucro & Caixa"
+      ],
+      "gaps": [
+        "carryUtm não inclui links internos para páginas de produto",
+        "clique ferramenta→produto tende a reaparecer como source interno e perder campaign",
+        "catálogo mistura itens em breve, produtos pagos, assinatura e recursos grátis sem caminho por problema"
+      ]
+    },
+    {
+      "order": 5,
+      "id": "product_page",
+      "label": "Página do produto",
+      "surfaces": [
+        "/ia-na-pratica",
+        "/vendas-na-pratica",
+        "/lucro-e-caixa",
+        "/combo-ia-vendas",
+        "/negocio-completo"
+      ],
+      "next": "checkout_intent",
+      "evidence": [
+        "code-product-pages",
+        "live-product",
+        "google-product-data",
+        "consumer-rights-br"
+      ],
+      "available_aggregate_metrics": [
+        "views",
+        "visitantes",
+        "checkout_intent e hotmart_view por source",
+        "views e intenções diárias agregadas"
+      ],
+      "actual": null,
+      "strengths": [
+        "preço, escopo, adequação, entrega, garantia, suporte e CTA estão visíveis",
+        "Product/Offer e FAQ estruturados",
+        "CTAs repetidos ao longo da página"
+      ],
+      "gaps": [
+        "não há variante identificada para teste",
+        "não há prova prática específica acima da dobra além de descrição textual",
+        "não existe caminho agregado por sessão entre origem, produto e pagamento"
+      ]
+    },
+    {
+      "order": 6,
+      "id": "checkout_intent",
+      "label": "Intenção de compra",
+      "surfaces": [
+        "GET /comprar/<SKU>",
+        "/hotmart/<slug>",
+        "/assinar/conteudo-pronto"
+      ],
+      "next": "checkout",
+      "evidence": [
+        "code-sales-router",
+        "baymard-checkout",
+        "mercadopago-redirect"
+      ],
+      "available_aggregate_metrics": [
+        "checkout_intent",
+        "hotmart_view",
+        "subscribe_click",
+        "checkouts por produto"
+      ],
+      "actual": null,
+      "strengths": [
+        "GET de confirmação não cria ordem",
+        "produto, preço, meios, entrega e garantia são reiterados",
+        "POST é separado e protegido"
+      ],
+      "gaps": [
+        "formulário POST de /comprar não transporta UTM",
+        "order recebe session_id novo sem source/campaign",
+        "não há evento agregado específico para clique no botão final antes do redirecionamento"
+      ]
+    },
+    {
+      "order": 7,
+      "id": "checkout",
+      "label": "Checkout e resultado",
+      "surfaces": [
+        "Mercado Pago Checkout Pro",
+        "Hotmart",
+        "páginas de retorno"
+      ],
+      "next": null,
+      "evidence": [
+        "code-funnel",
+        "code-sales-router",
+        "mercadopago-redirect",
+        "mercadopago-returns"
+      ],
+      "available_aggregate_metrics": [
+        "checkouts",
+        "paid",
+        "refunded",
+        "revenue por produto",
+        "checkoutErrors",
+        "status/provedor/hora BRT agregados"
+      ],
+      "actual": null,
+      "strengths": [
+        "checkout hospedado no provedor",
+        "pagamento confirmado por webhook, não pela URL de retorno",
+        "diagnóstico exclui ids, contato e valores individuais"
+      ],
+      "gaps": [
+        "pagos não são atribuídos a source/campaign no resumo atual",
+        "métricas de desempenho de campo LCP/INP/CLS não estão presentes",
+        "sem baseline limpo não é possível quantificar abandono ou conversão da ZEVANORY"
+      ]
+    }
+  ],
+  "conclusions": [
+    {
+      "id": "no_full_funnel_rate",
+      "statement": "A instrumentação atual mede volumes úteis por etapa, mas não suporta uma taxa ponta a ponta por campanha sem inferência indevida.",
+      "evidence": [
+        "code-funnel",
+        "code-sales-router"
+      ]
+    },
+    {
+      "id": "checkout_not_first_assumption",
+      "statement": "A confirmação pré-checkout já é curta e explícita; não há evidência ZEVANORY para declarar o checkout como principal gargalo.",
+      "evidence": [
+        "code-sales-router",
+        "baymard-checkout"
+      ]
+    },
+    {
+      "id": "attribution_gap_first",
+      "statement": "A perda de UTM em links internos para produtos e a ausência de source/campaign nos pedidos impedem localizar abandono com precisão.",
+      "evidence": [
+        "code-sales-router",
+        "code-funnel"
+      ]
+    },
+    {
+      "id": "baseline_missing",
+      "statement": "Nenhuma taxa real de conversão, faturamento ou abandono foi registrada neste diagnóstico; todos os baselines experimentais começam null.",
+      "evidence": [
+        "code-funnel"
+      ]
+    }
+  ]
+}
