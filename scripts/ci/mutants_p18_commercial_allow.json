@@ -1,340 +1,518 @@
 {
- "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [P18C.n] que a codifica), escritas antes de rodar.",
- "mutants": {
-  "K01 host do checkout fora da lista aceito": {
-   "primary": [
-    {
-     "test_pattern": "forma do link:",
-     "assertion_pattern": "[P18C.3]"
-    }
-   ],
-   "secondary": [
-    {
-     "test_pattern": "P18C.20: botão interno /hotmart/<slug>/ir",
-     "assertion_pattern": "[P18C.20] /ir para host fora da lista",
-     "justification": "o destino do /ir passa por checkLinkShape; sem a checagem de host, o salto para evil.example deixa de reprovar (host_not_allowed)"
-    }
-   ]
-  },
-  "K02 oferta não conferida": {
-   "primary": [
-    {
-     "test_pattern": "forma do link:",
-     "assertion_pattern": "[P18C.3]"
-    }
-   ],
-   "secondary": [
-    {
-     "test_pattern": "P18C.20: botão interno /hotmart/<slug>/ir",
-     "assertion_pattern": "[P18C.20] /ir para oferta errada",
-     "justification": "o destino do /ir passa por checkLinkShape; sem conferir a oferta, o salto com off=errado1 deixa de reprovar (offer_mismatch)"
-    }
-   ]
-  },
-  "K03 parâmetro extra aceito": {
-   "primary": [
-    {
-     "test_pattern": "forma do link:",
-     "assertion_pattern": "[P18C.3]"
-    }
-   ],
-   "secondary": []
-  },
-  "K04 produto da página ignorado": {
-   "primary": [
-    {
-     "test_pattern": "produto da página:",
-     "assertion_pattern": "[P18C.4]"
-    }
-   ],
-   "secondary": [
-    {
-     "test_pattern": "P18C.20: botão interno /hotmart/<slug>/ir",
-     "assertion_pattern": "[P18C.20] /ir para o produto errado",
-     "justification": "o destino do /ir passa por checkLinkShape com pageSlug; sem conferir o produto da página, o salto para o checkout do Lucro & Caixa na página do IA deixa de reprovar"
-    }
-   ]
-  },
-  "K05 HTTP 200 sem evidência vira aberto": {
-   "primary": [
-    {
-     "test_pattern": "HTTP 200 sozinho nunca é PASS",
-     "assertion_pattern": "[P18C.9]"
-    }
-   ],
-   "secondary": [
-    {
-     "test_pattern": "checkout fechado",
-     "assertion_pattern": "[P18C.7]",
-     "justification": "'Pedido 1049 aprovado' não tem produto nem produtor e passa a ser 'open' em vez de 'unverifiable'"
-    }
-   ]
-  },
-  "K06 produtor não exigido no checkout aberto": {
-   "primary": [
-    {
-     "test_pattern": "HTTP 200 sozinho nunca é PASS",
-     "assertion_pattern": "[P18C.9]"
-    }
-   ],
-   "secondary": []
-  },
-  "K07 CNPJ divergente ignorado": {
-   "primary": [
-    {
-     "test_pattern": "produtor divergente reprova",
-     "assertion_pattern": "[P18C.10]"
-    }
-   ],
-   "secondary": []
-  },
-  "K08 nome de produtor proibido ignorado": {
-   "primary": [
-    {
-     "test_pattern": "produtor divergente reprova",
-     "assertion_pattern": "[P18C.10]"
-    }
-   ],
-   "secondary": []
-  },
-  "K09 ID de produto divergente ignorado": {
-   "primary": [
-    {
-     "test_pattern": "produto divergente reprova",
-     "assertion_pattern": "[P18C.11]"
-    }
-   ],
-   "secondary": [
-    {
-     "test_pattern": "checkout aberto:",
-     "assertion_pattern": "[P18C.8]",
-     "justification": "a fixture do IA lida para Vendas na Prática deixa de ser 'mismatch' e cai em 'product_identity_absent'"
-    }
-   ]
-  },
-  "K10 checkout aberto com a trava fechada passa": {
-   "primary": [
-    {
-     "test_pattern": "matriz de coerência com a trava",
-     "assertion_pattern": "[P18C.12]"
+  "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [P18C.n] que a codifica), escritas antes de rodar.",
+  "mutants": {
+    "K01 host do checkout fora da lista aceito": {
+      "primary": [
+        {
+          "test_pattern": "forma do link:",
+          "assertion_pattern": "[P18C.3]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "P18C.20: botão interno /hotmart/<slug>/ir",
+          "assertion_pattern": "[P18C.20] /ir para host fora da lista",
+          "justification": "o destino do /ir passa por checkLinkShape; sem a checagem de host, o salto para evil.example deixa de reprovar (host_not_allowed)"
+        }
+      ]
     },
-    {
-     "test_pattern": "live, trava fechada:",
-     "assertion_pattern": "[P18C.14]"
-    }
-   ],
-   "secondary": []
-  },
-  "K11 checkout fechado com a trava aberta passa": {
-   "primary": [
-    {
-     "test_pattern": "matriz de coerência com a trava",
-     "assertion_pattern": "[P18C.12]"
-    }
-   ],
-   "secondary": [
-    {
-     "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
-     "assertion_pattern": "[P18C.H2]",
-     "justification": "no modo Hotmart os kits são julgados pela regra da trava aberta; com o checkout fechado (049) e o canal aberto, o mutante faz o FAIL hotmart_closed_while_enabled virar PASS"
-    }
-   ]
-  },
-  "K12 trava lida sem HTTP 200": {
-   "primary": [
-    {
-     "test_pattern": "trava global:",
-     "assertion_pattern": "[P18C.6]"
-    }
-   ],
-   "secondary": []
-  },
-  "K13 trava com caixa e campo alternativos": {
-   "primary": [
-    {
-     "test_pattern": "trava global:",
-     "assertion_pattern": "[P18C.6]"
-    }
-   ],
-   "secondary": []
-  },
-  "K14 trava desconhecida não reprova o checkout": {
-   "primary": [
-    {
-     "test_pattern": "matriz de coerência com a trava",
-     "assertion_pattern": "[P18C.12]"
-    }
-   ],
-   "secondary": []
-  },
-  "K15 POST aceito pela guarda": {
-   "primary": [
-    {
-     "test_pattern": "GET seguro:",
-     "assertion_pattern": "[P18C.13]"
-    }
-   ],
-   "secondary": []
-  },
-  "K16 credentials include aceito": {
-   "primary": [
-    {
-     "test_pattern": "GET seguro:",
-     "assertion_pattern": "[P18C.13]"
-    }
-   ],
-   "secondary": []
-  },
-  "K17 cabeçalho cookie aceito": {
-   "primary": [
-    {
-     "test_pattern": "GET seguro:",
-     "assertion_pattern": "[P18C.13]"
-    }
-   ],
-   "secondary": []
-  },
-  "K18 redirecionamento para fora da lista seguido": {
-   "primary": [
-    {
-     "test_pattern": "GET seguro:",
-     "assertion_pattern": "[P18C.13]"
-    }
-   ],
-   "secondary": []
-  },
-  "K19 rota do site com checkout e trava fechada": {
-   "primary": [
-    {
-     "test_pattern": "matriz de coerência com a trava",
-     "assertion_pattern": "[P18C.12]"
+    "K02 oferta não conferida": {
+      "primary": [
+        {
+          "test_pattern": "forma do link:",
+          "assertion_pattern": "[P18C.3]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "P18C.20: botão interno /hotmart/<slug>/ir",
+          "assertion_pattern": "[P18C.20] /ir para oferta errada",
+          "justification": "o destino do /ir passa por checkLinkShape; sem conferir a oferta, o salto com off=errado1 deixa de reprovar (offer_mismatch)"
+        }
+      ]
     },
-    {
-     "test_pattern": "live, trava fechada:",
-     "assertion_pattern": "[P18C.14]"
-    }
-   ],
-   "secondary": [
-    {
-     "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
-     "assertion_pattern": "[P18C.H3]",
-     "justification": "com o canal Hotmart ilegível ou fechado, a rota do kit com checkout volta à regra da trava fechada; sem a regra, site_route_checkout_while_locked não aparece"
-    }
-   ]
-  },
-  "K20 Location do 302 ignorado": {
-   "primary": [
-    {
-     "test_pattern": "matriz de coerência com a trava",
-     "assertion_pattern": "[P18C.12]"
-    }
-   ],
-   "secondary": [
-    {
-     "test_pattern": "live, trava aberta e trava ilegível",
-     "assertion_pattern": "[P18C.15]",
-     "justification": "no live com trava aberta, /assinar/conteudo-pronto responde 302 e fica sem checkout conferido"
+    "K03 parâmetro extra aceito": {
+      "primary": [
+        {
+          "test_pattern": "forma do link:",
+          "assertion_pattern": "[P18C.3]"
+        }
+      ],
+      "secondary": []
     },
-    {
-     "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
-     "assertion_pattern": "[P18C.H4]",
-     "justification": "no modo Hotmart, /assinar/conteudo-pronto com 302 para a Hotmart só é detectado pelo Location; ignorado, a rota da assinatura passa como pausada"
-    }
-   ]
-  },
-  "K21 link da lista em página estática aceito": {
-   "primary": [
-    {
-     "test_pattern": "modo offline reprova:",
-     "assertion_pattern": "[P18C.17]"
-    }
-   ],
-   "secondary": []
-  },
-  "K22 URL solta no Worker ignorada": {
-   "primary": [
-    {
-     "test_pattern": "modo offline reprova:",
-     "assertion_pattern": "[P18C.17]"
-    }
-   ],
-   "secondary": []
-  },
-  "K23 catálogo divergente aceito": {
-   "primary": [
-    {
-     "test_pattern": "modo offline reprova:",
-     "assertion_pattern": "[P18C.17]"
-    }
-   ],
-   "secondary": []
-  },
-  "K24 número de 14 dígitos vira CNPJ": {
-   "primary": [
-    {
-     "test_pattern": "HTTP 200 sozinho nunca é PASS",
-     "assertion_pattern": "[P18C.9]"
-    }
-   ],
-   "secondary": []
-  },
-  "K25 código 049 solto vira aviso": {
-   "primary": [
-    {
-     "test_pattern": "checkout fechado",
-     "assertion_pattern": "[P18C.7]"
-    }
-   ],
-   "secondary": [
-    {
-     "test_pattern": "live, trava aberta e trava ilegível",
-     "assertion_pattern": "[P18C.15]",
-     "justification": "o ID 8704905 (Conteúdo Pronto) contém '049': sem o contexto 'erro/código', o checkout aberto desse produto vira 'fechado' e a trava aberta reprova"
-    }
-   ]
-  },
-  "K26 rota do site não conferida no live": {
-   "primary": [
-    {
-     "test_pattern": "live, trava fechada:",
-     "assertion_pattern": "[P18C.14]"
-    }
-   ],
-   "secondary": [
-    {
-     "test_pattern": "live, trava aberta e trava ilegível",
-     "assertion_pattern": "[P18C.15]",
-     "justification": "sem as rotas, o relatório da trava aberta continua PASS, mas o da trava fora do ar perde metade das linhas; a 1ª asserção que pode falhar é a contagem/estado do 1º bloco"
+    "K04 produto da página ignorado": {
+      "primary": [
+        {
+          "test_pattern": "produto da página:",
+          "assertion_pattern": "[P18C.4]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "P18C.20: botão interno /hotmart/<slug>/ir",
+          "assertion_pattern": "[P18C.20] /ir para o produto errado",
+          "justification": "o destino do /ir passa por checkLinkShape com pageSlug; sem conferir o produto da página, o salto para o checkout do Lucro & Caixa na página do IA deixa de reprovar"
+        }
+      ]
     },
-    {
-     "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
-     "assertion_pattern": "[P18C.H3]",
-     "justification": "sem conferir as rotas no live, a rota do kit com checkout e canal fechado deixa de gerar site_route_checkout_while_locked"
+    "K05 HTTP 200 sem evidência vira aberto": {
+      "primary": [
+        {
+          "test_pattern": "HTTP 200 sozinho nunca é PASS",
+          "assertion_pattern": "[P18C.9]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "checkout fechado",
+          "assertion_pattern": "[P18C.7]",
+          "justification": "'Pedido 1049 aprovado' não tem produto nem produtor e passa a ser 'open' em vez de 'unverifiable'"
+        }
+      ]
     },
-    {
-     "test_pattern": "P18C.21: runLive segue o /ir",
-     "assertion_pattern": "[P18C.21] rotas /hotmart passam com o salto válido",
-     "justification": "a mutação tira a linha live:site_route do relatório (o /ir ainda é seguido); a asserção que exige as rotas /hotmart no relatório é a que falha"
+    "K06 produtor não exigido no checkout aberto": {
+      "primary": [
+        {
+          "test_pattern": "HTTP 200 sozinho nunca é PASS",
+          "assertion_pattern": "[P18C.9]"
+        }
+      ],
+      "secondary": []
+    },
+    "K07 CNPJ divergente ignorado": {
+      "primary": [
+        {
+          "test_pattern": "produtor divergente reprova",
+          "assertion_pattern": "[P18C.10]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "P18C.D4: desvios reais continuam reprovando",
+          "assertion_pattern": "[P18C.D4] motivo de identidade",
+          "justification": "sem a regra do CNPJ, o checkout do produtor divergente com preço certo deixa de ser mismatch e reprova por outro motivo de identidade ou passa"
+        }
+      ]
+    },
+    "K08 nome de produtor proibido ignorado": {
+      "primary": [
+        {
+          "test_pattern": "produtor divergente reprova",
+          "assertion_pattern": "[P18C.10]"
+        }
+      ],
+      "secondary": []
+    },
+    "K09 ID de produto divergente ignorado": {
+      "primary": [
+        {
+          "test_pattern": "produto divergente reprova",
+          "assertion_pattern": "[P18C.11]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "checkout aberto:",
+          "assertion_pattern": "[P18C.8]",
+          "justification": "a fixture do IA lida para Vendas na Prática deixa de ser 'mismatch' e cai em 'product_identity_absent'"
+        },
+        {
+          "test_pattern": "P18C.D4: desvios reais continuam reprovando",
+          "assertion_pattern": "[P18C.D4] produto divergente",
+          "justification": "sem a regra do ID, o checkout de outro produto com preço certo deixa de dar product_id_mismatch na exceção"
+        }
+      ]
+    },
+    "K10 checkout aberto com a trava fechada passa": {
+      "primary": [
+        {
+          "test_pattern": "matriz de coerência com a trava",
+          "assertion_pattern": "[P18C.12]"
+        },
+        {
+          "test_pattern": "live, trava fechada:",
+          "assertion_pattern": "[P18C.14]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "P18C.D3: live no estado autorizado",
+          "assertion_pattern": "[P18C.D3] sem decisão",
+          "justification": "sem a decisão carregada a regra antiga roda; a mutação aprova o checkout aberto e some o hotmart_open_while_locked"
+        },
+        {
+          "test_pattern": "P18C.D4: desvios reais continuam reprovando",
+          "assertion_pattern": "[P18C.D4] Conteúdo Pronto aberto",
+          "justification": "Conteúdo Pronto fora da decisão segue a regra antiga; a mutação o aprova aberto"
+        }
+      ]
+    },
+    "K11 checkout fechado com a trava aberta passa": {
+      "primary": [
+        {
+          "test_pattern": "matriz de coerência com a trava",
+          "assertion_pattern": "[P18C.12]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
+          "assertion_pattern": "[P18C.H2]",
+          "justification": "no modo Hotmart os kits são julgados pela regra da trava aberta; com o checkout fechado (049) e o canal aberto, o mutante faz o FAIL hotmart_closed_while_enabled virar PASS"
+        },
+        {
+          "test_pattern": "P18C.D5: a decisão só vale com a trava completa fechada",
+          "assertion_pattern": "[P18C.D5] trava aberta segue a regra normal",
+          "justification": "com a trava aberta o kit fechado deveria dar hotmart_closed_while_enabled; a mutação o aprova"
+        }
+      ]
+    },
+    "K12 trava lida sem HTTP 200": {
+      "primary": [
+        {
+          "test_pattern": "trava global:",
+          "assertion_pattern": "[P18C.6]"
+        }
+      ],
+      "secondary": []
+    },
+    "K13 trava com caixa e campo alternativos": {
+      "primary": [
+        {
+          "test_pattern": "trava global:",
+          "assertion_pattern": "[P18C.6]"
+        }
+      ],
+      "secondary": []
+    },
+    "K14 trava desconhecida não reprova o checkout": {
+      "primary": [
+        {
+          "test_pattern": "matriz de coerência com a trava",
+          "assertion_pattern": "[P18C.12]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "P18C.D5: a decisão só vale com a trava completa fechada",
+          "assertion_pattern": "[P18C.D5] trava fora do ar reprova tudo",
+          "justification": "com a trava ilegível os checkouts deixam de reprovar por release_unknown"
+        }
+      ]
+    },
+    "K15 POST aceito pela guarda": {
+      "primary": [
+        {
+          "test_pattern": "GET seguro:",
+          "assertion_pattern": "[P18C.13]"
+        }
+      ],
+      "secondary": []
+    },
+    "K16 credentials include aceito": {
+      "primary": [
+        {
+          "test_pattern": "GET seguro:",
+          "assertion_pattern": "[P18C.13]"
+        }
+      ],
+      "secondary": []
+    },
+    "K17 cabeçalho cookie aceito": {
+      "primary": [
+        {
+          "test_pattern": "GET seguro:",
+          "assertion_pattern": "[P18C.13]"
+        }
+      ],
+      "secondary": []
+    },
+    "K18 redirecionamento para fora da lista seguido": {
+      "primary": [
+        {
+          "test_pattern": "GET seguro:",
+          "assertion_pattern": "[P18C.13]"
+        }
+      ],
+      "secondary": []
+    },
+    "K19 rota do site com checkout e trava fechada": {
+      "primary": [
+        {
+          "test_pattern": "matriz de coerência com a trava",
+          "assertion_pattern": "[P18C.12]"
+        },
+        {
+          "test_pattern": "live, trava fechada:",
+          "assertion_pattern": "[P18C.14]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
+          "assertion_pattern": "[P18C.H3]",
+          "justification": "com o canal Hotmart ilegível ou fechado, a rota do kit com checkout volta à regra da trava fechada; sem a regra, site_route_checkout_while_locked não aparece"
+        },
+        {
+          "test_pattern": "P18C.D4: desvios reais continuam reprovando",
+          "assertion_pattern": "[P18C.D4] vitrine continua fechada",
+          "justification": "a rota do site com link de compra deixa de reprovar; a decisão nunca abre a vitrine"
+        }
+      ]
+    },
+    "K20 Location do 302 ignorado": {
+      "primary": [
+        {
+          "test_pattern": "matriz de coerência com a trava",
+          "assertion_pattern": "[P18C.12]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "live, trava aberta e trava ilegível",
+          "assertion_pattern": "[P18C.15]",
+          "justification": "no live com trava aberta, /assinar/conteudo-pronto responde 302 e fica sem checkout conferido"
+        },
+        {
+          "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
+          "assertion_pattern": "[P18C.H4]",
+          "justification": "no modo Hotmart, /assinar/conteudo-pronto com 302 para a Hotmart só é detectado pelo Location; ignorado, a rota da assinatura passa como pausada"
+        },
+        {
+          "test_pattern": "P18C.D5: a decisão só vale com a trava completa fechada",
+          "assertion_pattern": "[P18C.D5] trava aberta segue a regra normal",
+          "justification": "a rota da assinatura responde 302 para o checkout; sem ler o Location, a rota com a trava aberta reprova e entra um FAIL a mais"
+        }
+      ]
+    },
+    "K21 link da lista em página estática aceito": {
+      "primary": [
+        {
+          "test_pattern": "modo offline reprova:",
+          "assertion_pattern": "[P18C.17]"
+        }
+      ],
+      "secondary": []
+    },
+    "K22 URL solta no Worker ignorada": {
+      "primary": [
+        {
+          "test_pattern": "modo offline reprova:",
+          "assertion_pattern": "[P18C.17]"
+        }
+      ],
+      "secondary": []
+    },
+    "K23 catálogo divergente aceito": {
+      "primary": [
+        {
+          "test_pattern": "modo offline reprova:",
+          "assertion_pattern": "[P18C.17]"
+        }
+      ],
+      "secondary": []
+    },
+    "K24 número de 14 dígitos vira CNPJ": {
+      "primary": [
+        {
+          "test_pattern": "HTTP 200 sozinho nunca é PASS",
+          "assertion_pattern": "[P18C.9]"
+        }
+      ],
+      "secondary": []
+    },
+    "K25 código 049 solto vira aviso": {
+      "primary": [
+        {
+          "test_pattern": "checkout fechado",
+          "assertion_pattern": "[P18C.7]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "live, trava aberta e trava ilegível",
+          "assertion_pattern": "[P18C.15]",
+          "justification": "o ID 8704905 (Conteúdo Pronto) contém '049': sem o contexto 'erro/código', o checkout aberto desse produto vira 'fechado' e a trava aberta reprova"
+        },
+        {
+          "test_pattern": "P18C.D4: desvios reais continuam reprovando",
+          "assertion_pattern": "[P18C.D4] Conteúdo Pronto aberto",
+          "justification": "o preço/parcela do fixture contém dígitos; um 049 solto não existe, mas a regra mais frouxa muda a classificação dos fixtures abertos"
+        },
+        {
+          "test_pattern": "P18C.D5: a decisão só vale com a trava completa fechada",
+          "assertion_pattern": "[P18C.D5] trava aberta segue a regra normal",
+          "justification": "idem: a classificação aberto/fechado dos fixtures com a trava aberta muda"
+        }
+      ]
+    },
+    "K26 rota do site não conferida no live": {
+      "primary": [
+        {
+          "test_pattern": "live, trava fechada:",
+          "assertion_pattern": "[P18C.14]"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "live, trava aberta e trava ilegível",
+          "assertion_pattern": "[P18C.15]",
+          "justification": "sem as rotas, o relatório da trava aberta continua PASS, mas o da trava fora do ar perde metade das linhas; a 1ª asserção que pode falhar é a contagem/estado do 1º bloco"
+        },
+        {
+          "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
+          "assertion_pattern": "[P18C.H3]",
+          "justification": "sem conferir as rotas no live, a rota do kit com checkout e canal fechado deixa de gerar site_route_checkout_while_locked"
+        },
+        {
+          "test_pattern": "P18C.21: runLive segue o /ir",
+          "assertion_pattern": "[P18C.21] rotas /hotmart passam com o salto válido",
+          "justification": "a mutação tira a linha live:site_route do relatório (o /ir ainda é seguido); a asserção que exige as rotas /hotmart no relatório é a que falha"
+        },
+        {
+          "test_pattern": "P18C.D3: live no estado autorizado",
+          "assertion_pattern": "[P18C.D3] 6 rotas + 6 checkouts",
+          "justification": "sem as rotas no relatório, a contagem cai de 12 para 6"
+        },
+        {
+          "test_pattern": "P18C.D4: desvios reais continuam reprovando",
+          "assertion_pattern": "[P18C.D4] vitrine continua fechada",
+          "justification": "sem conferir a rota, a vitrine aberta deixa de reprovar"
+        }
+      ],
+      "broad_reason": "a conferência da rota do site é passo de todo runLive; desligá-la muda contagem e vereditos em todos os testes do modo live (trava fechada, canal Hotmart, /ir e exceção autorizada)"
+    },
+    "K27 relatório vazio passa": {
+      "primary": [
+        {
+          "test_pattern": "relatório: nenhum link conferido nunca é PASS",
+          "assertion_pattern": "[P18C.16]"
+        }
+      ],
+      "secondary": []
+    },
+    "K28 404 da assinatura aceito para kit": {
+      "primary": [
+        {
+          "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
+          "assertion_pattern": "[P18C.H5]"
+        }
+      ],
+      "secondary": []
+    },
+    "K29 preço decidido não conferido": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D4: desvios reais continuam reprovando",
+          "assertion_pattern": "[P18C.D4] preço diferente do decidido"
+        }
+      ],
+      "secondary": []
+    },
+    "K30 preço ilegível aceito": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D4: desvios reais continuam reprovando",
+          "assertion_pattern": "[P18C.D4] preço ilegível"
+        }
+      ],
+      "secondary": []
+    },
+    "K31 preço ambíguo aceito": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D4: desvios reais continuam reprovando",
+          "assertion_pattern": "[P18C.D4] dois preços"
+        }
+      ],
+      "secondary": []
+    },
+    "K32 kit autorizado fechado passa": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D4: desvios reais continuam reprovando",
+          "assertion_pattern": "[P18C.D4] kit autorizado fechado"
+        }
+      ],
+      "secondary": []
+    },
+    "K33 exceção vale com a trava aberta ou desconhecida": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D5: a decisão só vale com a trava completa fechada",
+          "assertion_pattern": "[P18C.D5] trava aberta: regra normal"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "P18C.D5: a decisão só vale com a trava completa fechada",
+          "assertion_pattern": "[P18C.D5] trava aberta segue a regra normal",
+          "justification": "com a exceção valendo na trava aberta, o kit fechado ganha o motivo authorized_direct_open_but_closed em vez de hotmart_closed_while_enabled"
+        }
+      ]
+    },
+    "K34 exceção vale com o canal do site aberto": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D5: a decisão só vale com a trava completa fechada",
+          "assertion_pattern": "[P18C.D5] canal do site aberto: regra do canal"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "P18C.D5: a decisão só vale com a trava completa fechada",
+          "assertion_pattern": "[P18C.D5] canal aberto:",
+          "justification": "com a exceção valendo com o canal aberto, os kits sem preço no fixture reprovam por authorized_direct_price_unverified"
+        }
+      ]
+    },
+    "K35 assinatura aceita na decisão": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D1: decisão de abertura direta válida",
+          "assertion_pattern": "[P18C.D1] assinatura nunca entra"
+        }
+      ],
+      "secondary": []
+    },
+    "K36 oferta da decisão não conferida com a lista fechada": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D1: decisão de abertura direta válida",
+          "assertion_pattern": "[P18C.D1] oferta divergente da lista fechada"
+        }
+      ],
+      "secondary": []
+    },
+    "K37 identidade divergente aceita na exceção": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D4: desvios reais continuam reprovando",
+          "assertion_pattern": "[P18C.D4] produtor divergente"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "P18C.D4: desvios reais continuam reprovando",
+          "assertion_pattern": "[P18C.D4] produto divergente",
+          "justification": "ID de produto divergente vira mismatch; a mutação o aceita na exceção (o teste para antes, na asserção do produtor)"
+        }
+      ]
+    },
+    "K38 preço offline não conferido com o catálogo": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D6: modo offline confere o preço",
+          "assertion_pattern": "[P18C.D6] preço divergente do catálogo"
+        }
+      ],
+      "secondary": [
+        {
+          "test_pattern": "P18C.D6: modo offline confere o preço",
+          "assertion_pattern": "[P18C.D6] 5 preços iguais ao catálogo",
+          "justification": "a contagem de motivos direct_price_matches_catalog não muda (ok continua true); só a divergência deixa de reprovar — secundária por segurança, pode não disparar"
+        }
+      ]
     }
-   ]
-  },
-  "K27 relatório vazio passa": {
-   "primary": [
-    {
-     "test_pattern": "relatório: nenhum link conferido nunca é PASS",
-     "assertion_pattern": "[P18C.16]"
-    }
-   ],
-   "secondary": []
-  },
-  "K28 404 da assinatura aceito para kit": {
-   "primary": [
-    {
-     "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
-     "assertion_pattern": "[P18C.H5]"
-    }
-   ],
-   "secondary": []
   }
- }
 }
