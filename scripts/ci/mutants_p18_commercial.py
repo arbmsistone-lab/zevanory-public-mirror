@@ -62,8 +62,8 @@ M = {
     "K27 relatório vazio passa": (C, "  const verdict = results.length > 0 && fail === 0 ? PASS : FAIL;", "  const verdict = fail === 0 ? PASS : FAIL;"),
     "K28 404 da assinatura aceito para kit": (C, '    if (status === 404 && product.kind === "subscription" && !loc)', '    if (status === 404 && !loc)'),
     # Abertura direta autorizada (decisão de 25/11/2026): cada regra que separa o estado decidido de um desvio real.
-    "K29 preço decidido não conferido": (C, '  if (prices[0] !== entry.price_cash_brl) return', '  if (false) return'),
-    "K30 preço ilegível aceito": (C, '  if (prices.length === 0) return { verdict: FAIL, reason: "authorized_direct_price_unverified" };\n', ""),
+    "K29 preço decidido não conferido": (C, '  if (st.value_brl !== entry.price_cash_brl) return', '  if (false) return'),
+    "K30 preço ilegível aceito": (C, '  if (st.state === "absent") return { verdict: FAIL, reason: "authorized_direct_price_unverified" };\n', ""),
     "K31 preço ambíguo aceito": (C, '  if (prices.length > 1) return { verdict: FAIL, reason: "authorized_direct_price_ambiguous:" + prices.join("|") };\n', ""),
     "K32 kit autorizado fechado passa": (C, '  if (cls.state === "closed") return { verdict: FAIL, reason: "authorized_direct_open_but_closed" };', '  if (cls.state === "closed") return { verdict: PASS, reason: "authorized_direct_open_but_closed" };'),
     "K33 exceção vale com a trava aberta ou desconhecida": (C, '  if (!direct || mode !== "globally-blocked" || channelOpen === true', '  if (!direct || channelOpen === true'),
@@ -73,8 +73,18 @@ M = {
     "K37 identidade divergente aceita na exceção": (C, '  if (cls.state === "mismatch" || cls.state === "unverifiable") return { verdict: FAIL, reason: cls.reason };\n  if (cls.state === "closed") return { verdict: FAIL, reason: "authorized_direct',
                                                    '  if (cls.state === "unverifiable") return { verdict: FAIL, reason: cls.reason };\n  if (cls.state === "mismatch") return { verdict: PASS, reason: "x" };\n  if (cls.state === "closed") return { verdict: FAIL, reason: "authorized_direct'),
     "K38 preço offline não conferido com o catálogo": (C, '    const ok = want !== null && e.price_cash_brl === want;', '    const ok = want !== null;'),
-    "K39 HTML inicial do servidor ignorado no preço": (C, '    const priceText = searchableText(got.body || "") + " " + searchableText(String(got.ssr || "")', '    const priceText = searchableText(got.body || "") + " " + searchableText(String("")'),
+    "K39 HTML bruto do servidor ignorado no preço estruturado": (C, 'structuredFromSources([got.ssr_raw, got.body], de)', 'structuredFromSources([got.body], de)'),
     "K40 preço dentro de script aceito": (C, 'searchableText(String(got.ssr || "").replace(/<script\\b[\\s\\S]*?<\\/script>/gi, " "));', 'searchableText(String(got.ssr || ""));'),
+    "K41 texto visível do servidor ignorado na conferência": (C, '    const priceText = searchableText(got.body || "") + " " + searchableText(String(got.ssr || "")', '    const priceText = searchableText(got.body || "") + " " + searchableText(String("")'),
+    "K42 oferta do produto não conferida": (C, ' || p.offer.key !== entry.offer);', ');'),
+    "K43 produto da oferta não conferido": (C, 'products.filter((p) => String(p.id) !== entry.hotmart_product_id || ', 'products.filter((p) => '),
+    "K44 forma de pagamento de outra oferta aceita": (C, '    if (pm.offer !== entry.offer) return { state: "offer_mismatch", detail: "payment_method_offer:" + String(pm.offer).slice(0, 20) };\n', ""),
+    "K45 moeda não conferida": (C, '  if (money.currency !== "BRL") return { err: "currency:" + String(money.currency ?? "ausente").slice(0, 8) };\n', ""),
+    "K46 valores à vista divergentes aceitos": (C, '  if (cents.size > 1) return { state: "divergent", detail: values.join("|"), values };\n', ""),
+    "K47 dois blocos de dados aceitos": (C, '  if (scripts.length > 1) return { state: "ambiguous", detail: "nuxt_data_scripts:" + scripts.length };\n', ""),
+    "K48 fontes divergentes aceitas": (C, '  if (vals.length > 1) return { state: "divergent", detail: "sources:" + vals.join("|"), values: vals };\n', ""),
+    "K49 mesma oferta com dados diferentes aceita": (C, '  if (products.length > 1) return { state: "ambiguous", detail: "same_offer_different_data:" + products.length };\n', ""),
+    "K50 parcelas contadas como preço à vista": (C, '.filter((x) => isObj(x) && x.number === 1);', '.filter((x) => isObj(x));'),
 }
 
 ALLOW_FILE = Path(os.environ.get("P18C_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p18_commercial_allow.json"))
