@@ -1,7 +1,8 @@
 // P18 ao vivo com o preço lido de São Paulo (scripts/b0/p18-live-br.mjs). Sem rede.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -9,7 +10,7 @@ import { loadAllowlist, loadDirectAuthorization, buildReport, PASS, FAIL } from 
 import { applyBrEvidence, decideBrEvidence, fetchBrRead, brEndpointOk, verifierSha256, BR_MAX_AGE_MS, deadlineStatus, classifyRun, collectHistory, LIVE_JOB_NAME, PROOF_STEP } from "../scripts/b0/p18-live-br.mjs";
 
 const allow = loadAllowlist("."), direct = loadDirectAuthorization(".", allow);
-const SHA = createHash("sha256").update(readFileSync("scripts/b0/p18-commercial.mjs", "utf8").replace(/\r\n?/g, "\n")).digest("hex");
+const SHA = createHash("sha256").update(readTextNormalized("scripts/b0/p18-commercial.mjs")).digest("hex");
 const NOW = Date.parse("2026-11-27T22:00:00Z");
 const URL_OK = "https://abcdefghijklmnopqrst.supabase.co/functions/v1/p18-leitura-br";
 const kitOf = (e, over = {}) => ({ slug: e.slug, at: "2026-11-27T21:59:10Z", http: 200, product: e.hotmart_product_id, offer: e.offer, currency: "BRL", currencies_seen: ["BRL"], cash_price: e.price_cash_brl, expected_brl: e.price_cash_brl, structured: "ok", verdict: "PASS", reason: "open_authorized_direct_hotmart", ...over });
@@ -121,12 +122,12 @@ test("P18LB.5: prazo só conta PASS OFICIAL EM BRL (passo de prova do job live);
   assert.ok(calls.every((c) => c.m === "GET" && c.u.startsWith("https://api.github.com/repos/o/r/")), "[P18LB.5] só GET na API do próprio repositório");
   // Portabilidade: hash do verificador igual com CRLF.
   const d = mkdtempSync(join(tmpdir(), "p18lb-")); const f = join(d, "v.mjs");
-  writeFileSync(f, readFileSync("scripts/b0/p18-commercial.mjs", "utf8").replace(/\r?\n/g, "\r\n"));
+  writeFileSync(f, readTextNormalized("scripts/b0/p18-commercial.mjs").replace(/\r?\n/g, "\r\n"));
   assert.equal(verifierSha256(f), SHA, "[P18LB.5] sha igual com CRLF");
 });
 
 test("P18LB.6: nomes do job live e do passo de prova no workflow são exatamente os que o prazo reconhece; permissão actions: read só no job live", () => {
-  const wf = readFileSync(".github/workflows/p18-commercial-check.yml", "utf8").replace(/\r\n?/g, "\n");
+  const wf = readTextNormalized(".github/workflows/p18-commercial-check.yml");
   assert.ok(wf.includes("    name: " + LIVE_JOB_NAME + "\n"), "[P18LB.6] nome do job live");
   assert.ok(wf.includes("      - name: " + PROOF_STEP + "\n"), "[P18LB.6] nome do passo de prova");
   const top = wf.slice(0, wf.indexOf("\njobs:"));
