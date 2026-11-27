@@ -138,7 +138,8 @@ jobs:
       - name: Diagnóstico isolado (mesmo runner, mesma leitura do live)
         shell: bash
         run: |
-          set -uo pipefail
+          # Diagnóstico nunca decide: o shell do runner usa -e; desligado aqui para o passo chegar ao fim.
+          set +e -uo pipefail
           node scripts/b0/p18-commercial.mjs --mode live --browser --out "$RUNNER_TEMP/p18-commercial.json" | tee "$RUNNER_TEMP/live.txt"
           code=${PIPESTATUS[0]}
           echo "::notice title=P18_COMMERCIAL::$(grep -E '^P18_COMMERCIAL ' "$RUNNER_TEMP/live.txt")"
