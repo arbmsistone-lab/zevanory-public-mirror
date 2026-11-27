@@ -74,7 +74,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p18_commercial.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P18_COMMERCIAL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=40 killed=40 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=50 killed=50 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"

@@ -18,7 +18,8 @@
 //  - trava ilegível ou fora do ar = FAIL de todos os links (fail-closed).
 //  - EXCEÇÃO AUTORIZADA (data/p18-hotmart-direct-authorization.json, decisão do proprietário de 25/11/2026): com a
 //    trava fechada E o canal Hotmart do site fechado, SÓ os kits listados ali podem ter o checkout direto aberto, com
-//    produto e produtor conferidos E o preço à vista igual ao registrado. A rota do site continua tendo de estar
+//    produto e produtor conferidos E o preço à vista igual ao registrado, lido do dado ESTRUTURADO da oferta exata
+//    (produto + oferta + BRL; ver structuredOfferPrice) e, se a página também o mostrar, igual ao visível. A rota do site continua tendo de estar
 //    pausada. Fora da lista (ex.: Conteúdo Pronto), preço diferente, preço ilegível ou ambíguo, identidade divergente:
 //    FAIL. Kit autorizado com o checkout fechado também é FAIL (desvio do estado decidido).
 // Página que só responde 200, sem produto, sem produtor e sem o aviso de vendas fechadas = FAIL
@@ -101,14 +102,124 @@ export function directEntry(direct, product, mode, channelOpen) {
   const e = direct.products.find((x) => x.slug === product.slug);
   return e && e.hotmart_product_id === product.hotmart_product_id && e.checkout_code === product.checkout_code && e.offer === product.offer ? e : null;
 }
-export function decideDirectCheckout(cls, text, entry) {
+// ---------------------------------------------------------------- preço estruturado da oferta (Hotmart/Nuxt)
+// O checkout da Hotmart entrega, no HTML do servidor, o estado da página em <script type="application/json"
+// id="__NUXT_DATA__"> (formato devalue: um array plano em que objetos e listas guardam ÍNDICES de outros itens). Lá o
+// produto (id) traz a oferta (key = código da oferta) e, por forma de pagamento (offer = mesma oferta), o valor com a
+// moeda: {currency:"BRL", value:97}. À vista = parcela número 1 do cartão (amount e fullAmount) e o valor de PIX/boleto.
+// Prova de que o valor é DA OFERTA CERTA: só conta o produto cujo id é o da decisão E cuja oferta é a da decisão; toda
+// forma de pagamento precisa citar essa mesma oferta; todo valor precisa estar em BRL; todos os valores à vista
+// precisam ser iguais. Qualquer outra coisa reprova (fail-closed): ausente, ilegível, ambíguo, divergente, outra moeda.
+const NUXT_SCRIPT = /<script\b[^>]*\bid\s*=\s*["']__NUXT_DATA__["'][^>]*>([\s\S]*?)<\/script\s*>/gi;
+const DEVALUE_WRAP1 = new Set(["ShallowReactive", "Reactive", "Ref", "ShallowRef", "NuxtError", "EmptyShallowRef", "EmptyRef"]);
+const MAX_NUXT_ITEMS = 200_000, MAX_DEPTH = 64;
+export function decodeNuxtData(json) {
+  const a = JSON.parse(json);
+  if (!Array.isArray(a) || a.length === 0 || a.length > MAX_NUXT_ITEMS) throw new Error("nuxt_data_shape");
+  const memo = new Map();
+  const special = { [-1]: undefined, [-2]: undefined, [-3]: NaN, [-4]: Infinity, [-5]: -Infinity, [-6]: -0 };
+  const hy = (i, d) => {
+    if (!Number.isInteger(i)) throw new Error("nuxt_data_ref");
+    if (i < 0) { if (i in special) return special[i]; throw new Error("nuxt_data_ref"); }
+    if (i >= a.length || d > MAX_DEPTH) throw new Error("nuxt_data_ref");
+    if (memo.has(i)) return memo.get(i);
+    const v = a[i]; let r;
+    if (Array.isArray(v)) {
+      if (typeof v[0] === "string") {
+        if (DEVALUE_WRAP1.has(v[0])) r = v.length > 1 ? hy(v[1], d + 1) : undefined;
+        else if (v[0] === "Date") r = String(v[1]);
+        else if (v[0] === "Set") { r = []; memo.set(i, r); for (const x of v.slice(1)) r.push(hy(x, d + 1)); }
+        else if (v[0] === "Map") { r = []; memo.set(i, r); for (let k = 1; k + 1 < v.length; k += 2) r.push([hy(v[k], d + 1), hy(v[k + 1], d + 1)]); }
+        else if (v[0] === "null") { r = Object.create(null); memo.set(i, r); for (let k = 1; k + 1 < v.length; k += 2) r[v[k]] = hy(v[k + 1], d + 1); }
+        else throw new Error("nuxt_data_tag:" + v[0].slice(0, 24));
+      } else { r = []; memo.set(i, r); for (const x of v) r.push(hy(x, d + 1)); }
+    } else if (v !== null && typeof v === "object") { r = {}; memo.set(i, r); for (const k of Object.keys(v)) r[k] = hy(v[k], d + 1); }
+    else r = v;
+    memo.set(i, r);
+    return r;
+  };
+  return hy(0, 0);
+}
+const centsOf = (money) => {
+  if (!isObj(money)) return { err: "money_shape" };
+  if (money.currency !== "BRL") return { err: "currency:" + String(money.currency ?? "ausente").slice(0, 8) };
+  const v = money.value;
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return { err: "value_shape" };
+  const c = Math.round(v * 100);
+  if (Math.abs(c - v * 100) > 1e-6) return { err: "value_fraction" };
+  return { cents: c };
+};
+export const brlOfCents = (c) => Math.floor(c / 100) + "," + String(c % 100).padStart(2, "0");
+// Lê UM documento HTML. Retorna {state, ...}: absent | invalid | ambiguous | offer_mismatch | currency | divergent | ok.
+export function structuredOfferPrice(html, entry) {
+  const scripts = [...String(html || "").matchAll(NUXT_SCRIPT)];
+  if (scripts.length === 0) return { state: "absent" };
+  if (scripts.length > 1) return { state: "ambiguous", detail: "nuxt_data_scripts:" + scripts.length };
+  let root;
+  try { root = decodeNuxtData(scripts[0][1].trim()); } catch (e) { return { state: "invalid", detail: String(e.message || e).slice(0, 60) }; }
+  // Produtos com oferta: id + offer.key + offer.paymentMethods. Mesmo objeto em vários lugares do estado conta uma vez.
+  const found = new Map(), seen = new Set();
+  const walk = (o) => {
+    if (o === null || typeof o !== "object" || seen.has(o)) return; seen.add(o);
+    if (isObj(o) && isObj(o.offer) && typeof o.offer.key === "string" && Array.isArray(o.offer.paymentMethods) && (typeof o.id === "number" || typeof o.id === "string"))
+      found.set(JSON.stringify([String(o.id), o.offer.key, o.offer.paymentMethods]), o);
+    for (const k of Object.keys(o)) walk(o[k]);
+  };
+  walk(root);
+  const products = [...found.values()];
+  if (products.length === 0) return { state: "absent", detail: "no_product_offer" };
+  const foreign = products.filter((p) => String(p.id) !== entry.hotmart_product_id || p.offer.key !== entry.offer);
+  if (foreign.length) return { state: "offer_mismatch", detail: foreign.map((p) => String(p.id) + "/" + p.offer.key).join("|").slice(0, 80) };
+  if (products.length > 1) return { state: "ambiguous", detail: "same_offer_different_data:" + products.length };
+  const p = products[0], quotes = [];
+  for (const pm of p.offer.paymentMethods) {
+    if (!isObj(pm)) return { state: "invalid", detail: "payment_method_shape" };
+    if (pm.offer !== entry.offer) return { state: "offer_mismatch", detail: "payment_method_offer:" + String(pm.offer).slice(0, 20) };
+    if (pm.type === "CREDIT_CARD") {
+      const one = (Array.isArray(pm.installments) ? pm.installments : []).filter((x) => isObj(x) && x.number === 1);
+      if (one.length > 1) return { state: "ambiguous", detail: "installment_1:" + one.length };
+      if (one.length === 1) quotes.push(one[0].amount, one[0].fullAmount);
+    } else quotes.push(pm.amount);
+  }
+  const cents = new Set();
+  for (const q of quotes) {
+    const r = centsOf(q);
+    if (r.err && r.err.startsWith("currency:")) return { state: "currency", detail: r.err.slice(9) };
+    if (r.err) return { state: "invalid", detail: r.err };
+    cents.add(r.cents);
+  }
+  if (cents.size === 0) return { state: "absent", detail: "no_cash_quote" };
+  const values = [...cents].sort((x, y) => x - y).map(brlOfCents);
+  if (cents.size > 1) return { state: "divergent", detail: values.join("|"), values };
+  return { state: "ok", product_id: String(p.id), offer: p.offer.key, currency: "BRL", value_brl: values[0], quotes: quotes.length };
+}
+// Várias fontes do MESMO GET (HTML do servidor; DOM renderizado): cada uma lida isoladamente; as que trazem dados
+// precisam concordar. Ausente em todas = não verificado.
+export function structuredFromSources(sources, entry) {
+  const rs = sources.filter((x) => typeof x === "string" && x.length).map((h) => structuredOfferPrice(h, entry)).filter((r) => r.state !== "absent");
+  if (rs.length === 0) return { state: "absent" };
+  const bad = rs.find((r) => r.state !== "ok");
+  if (bad) return bad;
+  const vals = [...new Set(rs.map((r) => r.value_brl))];
+  if (vals.length > 1) return { state: "divergent", detail: "sources:" + vals.join("|"), values: vals };
+  return rs[0];
+}
+export function decideDirectCheckout(cls, text, entry, st = { state: "absent" }) {
   if (cls.state === "mismatch" || cls.state === "unverifiable") return { verdict: FAIL, reason: cls.reason };
   if (cls.state === "closed") return { verdict: FAIL, reason: "authorized_direct_open_but_closed" };
   if (cls.state !== "open") return { verdict: FAIL, reason: "checkout_state_unknown" };
+  // 1) Preço ESTRUTURADO da oferta exata (obrigatório): prova que o valor é desta oferta, em BRL.
+  if (st.state === "absent") return { verdict: FAIL, reason: "authorized_direct_price_unverified" };
+  if (st.state === "offer_mismatch") return { verdict: FAIL, reason: "authorized_direct_offer_mismatch:" + st.detail };
+  if (st.state === "currency") return { verdict: FAIL, reason: "authorized_direct_price_currency:" + st.detail };
+  if (st.state === "ambiguous") return { verdict: FAIL, reason: "authorized_direct_price_ambiguous:" + st.detail };
+  if (st.state === "divergent") return { verdict: FAIL, reason: "authorized_direct_price_divergent:" + st.detail };
+  if (st.state !== "ok") return { verdict: FAIL, reason: "authorized_direct_price_invalid:" + (st.detail || st.state) };
+  if (st.value_brl !== entry.price_cash_brl) return { verdict: FAIL, reason: "authorized_direct_price_mismatch:" + st.value_brl };
+  // 2) Preço à vista VISÍVEL (quando a página o mostra): precisa ser único e igual ao estruturado.
   const prices = cashPrices(text);
-  if (prices.length === 0) return { verdict: FAIL, reason: "authorized_direct_price_unverified" };
   if (prices.length > 1) return { verdict: FAIL, reason: "authorized_direct_price_ambiguous:" + prices.join("|") };
-  if (prices[0] !== entry.price_cash_brl) return { verdict: FAIL, reason: "authorized_direct_price_mismatch:" + prices[0] };
+  if (prices.length === 1 && prices[0] !== st.value_brl) return { verdict: FAIL, reason: "authorized_direct_price_divergent:visible:" + prices[0] };
   return { verdict: PASS, reason: "open_authorized_direct_hotmart" };
 }
 
@@ -435,9 +546,11 @@ export async function runLive({ allow, direct = null, fetchImpl = fetch, renderC
     const cls = got.error && !got.body ? { state: "unverifiable", reason: got.error, identity: null } : classifyCheckout(got, p, allow);
     // Preço: texto da página (renderizada ou não) + texto visível do HTML inicial do servidor (sem scripts), do mesmo GET.
     const priceText = searchableText(got.body || "") + " " + searchableText(String(got.ssr || "").replace(/<script\b[\s\S]*?<\/script>/gi, " "));
-    const d = de ? decideDirectCheckout(cls, priceText, de) : decideCheckout(em, cls);
+    // Preço estruturado da oferta: HTML bruto do servidor (ssr_raw) e página obtida (body), cada um lido à parte.
+    const st = de ? structuredFromSources([got.ssr_raw, got.body], de) : null;
+    const d = de ? decideDirectCheckout(cls, priceText, de, st) : decideCheckout(em, cls);
     results.push({ link: href, source: "live:checkout", slug: p.slug, verdict: d.verdict, reason: sm.mode ? d.reason : sm.reason,
-      ...(de ? { authorized_direct: true, price_expected: de.price_cash_brl, prices_seen: cashPrices(priceText) } : {}),
+      ...(de ? { authorized_direct: true, price_expected: de.price_cash_brl, prices_seen: cashPrices(priceText), structured: st } : {}),
       http_status: got.status, hops: got.hops || [], state: cls.state, identity: cls.identity, ...(got.blocked_non_get !== undefined ? { blocked_non_get: got.blocked_non_get } : {}) });
   }
   return buildReport("live", results, { started_at: started, finished_at: new Date(now()).toISOString(), sales_mode: sm.mode, sales_mode_reason: sm.reason, hotmart_channel: hc.open, hotmart_channel_reason: hc.reason,
