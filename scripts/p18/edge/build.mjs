@@ -6,16 +6,22 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 export const OUT = "supabase/functions/p18-leitura-br/index.ts";
 const sha = (s) => createHash("sha256").update(s).digest("hex");
+// Portável (Windows com core.autocrlf): toda fonte é lida com fim de linha normalizado para \n antes de cortar e de
+// calcular o sha256; assim o hash e o arquivo gerado são os mesmos em qualquer sistema.
+const readLF = (f) => readFileSync(f, "utf8").replace(/\r\n?/g, "\n");
+// Dados embutidos: '#' vira \u0023 dentro das strings JSON (mesmo valor ao ler), para que "#1014" de uma nota não
+// pareça uma cor no gate PED de arquivos .ts.
+const jsonLiteral = (txt) => JSON.stringify(JSON.parse(txt), null, 1).replace(/#/g, "\\u0023");
 export function build(root = ROOT) {
-  const verifier = readFileSync(join(root, "scripts/b0/p18-commercial.mjs"), "utf8");
-  const allow = readFileSync(join(root, "data/p18-commercial-allowlist.json"), "utf8");
-  const direct = readFileSync(join(root, "data/p18-hotmart-direct-authorization.json"), "utf8");
-  const handler = readFileSync(join(root, "scripts/p18/edge/leitura-br.mjs"), "utf8");
+  const verifier = readLF(join(root, "scripts/b0/p18-commercial.mjs"));
+  const allow = readLF(join(root, "data/p18-commercial-allowlist.json"));
+  const direct = readLF(join(root, "data/p18-hotmart-direct-authorization.json"));
+  const handler = readLF(join(root, "scripts/p18/edge/leitura-br.mjs"));
   const v = verifier.replace(/^import [^\n]* from "node:[^"]+";\n/gm, "").replace(/\nif \(import\.meta\.url === pathToFileURL[^\n]*\n?$/, "\n");
   if (/from "node:/.test(v) || /process\.argv/.test(v.split("\nasync function main")[1]?.split("\n}\n")[1] || "")) throw new Error("verifier_strip_failed");
   const h = handler.replace(/^import \{[\s\S]*?\} from "\.\.\/\.\.\/b0\/p18-commercial\.mjs";\n/m, "");
@@ -30,8 +36,8 @@ ${v}
 // ---------------------------------------------------------------- leitura a partir de São Paulo
 ${h}
 // ---------------------------------------------------------------- servidor
-const ALLOW = ${allow.trim()};
-const DIRECT = ${direct.trim()};
+const ALLOW = ${jsonLiteral(allow)};
+const DIRECT = ${jsonLiteral(direct)};
 const META = ${JSON.stringify(meta)};
 Deno.serve(async (req) => {
   const u = new URL(req.url);
@@ -44,7 +50,7 @@ Deno.serve(async (req) => {
 `;
   return { out, meta };
 }
-if (import.meta.url === new URL("file://" + process.argv[1]).href) {
+if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
   const { out, meta } = build();
   mkdirSync(join(ROOT, dirname(OUT)), { recursive: true });
   writeFileSync(join(ROOT, OUT), out);
