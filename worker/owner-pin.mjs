@@ -1,4 +1,4 @@
-// ZEVANORY | Acesso do proprietário ao chat por PIN de 6 dígitos (pedido do proprietário, 26/11/2026).
+// ZEVANORY | Acesso do proprietário ao chat por PIN de 6 dígitos (26/11/2026); desde 27/11 a tela não pede PIN: a sessão vem do painel (owner-panel-bridge.mjs).
 // Só para o chat do proprietário (/admin/proprietario e /api/admin/owner-chat/*). O Basic do console continua valendo.
 // * PIN: segredo do Worker `OWNER_CHAT_PIN` (exatamente 6 dígitos). Ausente ou fora do formato => PIN DESLIGADO
 //   (comportamento anterior: só Basic). O valor nunca é logado nem devolvido.
@@ -125,7 +125,7 @@ export const PIN_PAGE_HEADERS = Object.freeze({
 // painel. O nome PIN_PAGE fica por compatibilidade.
 export const PIN_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>ZEVANORY · Epaminondas</title>
 <style>:root{color-scheme:dark}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1220;color:#e5e7eb;font:15px/1.45 system-ui,Arial,sans-serif}
-.c{width:min(320px,calc(100vw - 24px));padding:18px;text-align:center}h1{font-size:17px;margin:0 0 6px}p{color:#94a3b8;margin:0;font-size:14px}a{color:#38bdf8}</style></head><body><main class="c">
+.c{width:min(320px,calc(100vw - 24px));padding:18px;text-align:center}h1{font-size:17px;margin:0 0 6px}p{color:#94a3b8;margin:0;font-size:14px}a{color:#38bdf8}html[data-theme=light] body{background:#f8fafc;color:#0f172a}html[data-theme=light] p{color:#475569}</style></head><body><main class="c">
 <h1>Epaminondas</h1><p id="m" role="status">Conectando ao painel…</p></main>
 <script>
 const m=document.getElementById("m"),PANEL="https://controle.zevanory.api.br";
@@ -138,6 +138,9 @@ try{const r=await fetch("/api/admin/owner-chat/panel-session",{method:"POST",hea
 const j=await r.json().catch(()=>({}));if(r.ok){try{localStorage.removeItem("zv_owner_chat_logout_pending")}catch{}location.replace("/admin/proprietario");return;}
 m.textContent=r.status===401?"Sua sessão do painel acabou. Entre de novo no painel para conversar.":"O chat não respondeu agora. Vou tentar de novo em alguns segundos.";if(r.status!==401)setTimeout(pedir,10000);}
 catch{m.textContent="Sem conexão. Vou tentar de novo em alguns segundos.";setTimeout(pedir,10000);}finally{busy=false;}}
-window.addEventListener("message",e=>{if(e.origin!==PANEL||e.source!==window.parent||!e.data||e.data.type!=="zv-owner-chat:ticket"||!e.data.ticket)return;trocar(e.data.ticket);});
+window.addEventListener("message",e=>{if(e.origin!==PANEL||e.source!==window.parent||!e.data)return;
+if(e.data.type==="zv-owner-chat:ticket"&&e.data.ticket)trocar(e.data.ticket);
+else if(e.data.type==="zv-owner-chat:theme")document.documentElement.dataset.theme=e.data.theme==="light"?"light":"dark";
+else if(e.data.type==="zv-owner-chat:logout"){fetch("/api/admin/owner-chat/logout",{method:"POST",headers:{"content-type":"application/json","x-owner-chat":"1"},credentials:"same-origin"}).then(r=>r.json().then(j=>r.ok&&j.ok===true)).catch(()=>false).then(ok=>window.parent.postMessage({type:"zv-owner-chat:logged-out",ok},PANEL));}});
 if(window.parent===window){m.innerHTML='O Epaminondas abre dentro do painel. Entre em <a href="https://controle.zevanory.api.br/">controle.zevanory.api.br</a>.';}else pedir();
 </script></body></html>`;

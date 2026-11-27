@@ -37,6 +37,8 @@ export function errorCategory(detail) {
 export const KNOWN_TASKS = Object.freeze(["delivery_watchdog", "nurture", "owner_chat_retention"]);
 const fnv = (t) => { let h = 0x811c9dc5; for (const c of String(t)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, "0"); };
 const taskKey = (t) => (KNOWN_TASKS.includes(t) ? t : "desconhecida_" + fnv(t));
+// Data e hora de Brasília (UTC-3, sem horário de verão desde 2019) para o texto do proprietário.
+const brt = (ms) => new Date(ms - 3 * 3600_000).toISOString().slice(0, 16).replace("T", " ").replace(/^(\d{4})-(\d{2})-(\d{2})/, "$3/$2/$1");
 const taskLabel = (t) => (KNOWN_TASKS.includes(t) ? `"${t}"` : "não identificada");
 const POST_SALE_CODES = Object.freeze({ not_configured: "configuração ausente", provider_restricted: "chave do Resend sem permissão de leitura", quota_ledger_unreadable: "livro de cota ilegível", post_sale_inconclusive: "resultado inconclusivo", provider_usage_invalid: "resposta de uso inválida", reconciliation_pending: "entrega aguardando confirmação" });
 
@@ -51,16 +53,16 @@ async function readJson(kv, key) {
 // observação para as chaves dele (nem falha nem saúde) e vira, quando persistente, falha de observabilidade.
 export function observeCron(read, now) {
   if (read.state === "ausente") return [];
-  if (read.state !== "ok" || !obj(read.value) || !obj(read.value.tasks)) return [{ key: "vigia:sem-dados:ciclo", health: "falha", at: now, text: "O registro do ciclo horário está ilegível; não consigo confirmar a saúde das tarefas.", fix: "Nível 3: conferir o Worker." }];
+  if (read.state !== "ok" || !obj(read.value) || !obj(read.value.tasks)) return [{ key: "vigia:sem-dados:ciclo", health: "falha", at: now, text: "Não consegui ler o registro das tarefas automáticas. Por isso não sei se elas estão rodando.", fix: "Precisa de correção técnica. Eu cuido disso e aviso se depender de você." }];
   const at = Date.parse(read.value.finishedAt || "");
-  if (!validAt(at, now)) return [{ key: "vigia:sem-dados:ciclo", health: "falha", at: now, text: "O registro do ciclo horário não tem data válida (ausente ou no futuro).", fix: "Nível 3: conferir o Worker e o relógio." }];
+  if (!validAt(at, now)) return [{ key: "vigia:sem-dados:ciclo", health: "falha", at: now, text: "O registro das tarefas automáticas está sem data ou com data errada. Por isso não sei se elas estão rodando.", fix: "Precisa de correção técnica. Eu cuido disso e aviso se depender de você." }];
   const out = [{ key: "vigia:sem-dados:ciclo", health: "saudavel", at }];
-  if (now - at > 2 * HOUR) { out.push({ key: "ciclo:parado", health: "falha", at: now, text: `O ciclo horário não roda desde ${iso(at).slice(0, 16).replace("T", " ")} UTC.`, fix: "Nível 3: conferir o deploy e os gatilhos do Worker." }); return out; }
+  if (now - at > 2 * HOUR) { out.push({ key: "ciclo:parado", health: "falha", at: now, text: `As tarefas automáticas pararam de rodar desde ${brt(at)} (horário de Brasília).`, fix: "Precisa de correção técnica. Eu cuido disso e aviso se depender de você." }); return out; }
   out.push({ key: "ciclo:parado", health: "saudavel", at });
   for (const [task, status] of Object.entries(read.value.tasks)) {
     const k = "ciclo:falha:" + taskKey(task);
     if (status === "ok") out.push({ key: k, health: "saudavel", at });
-    else if (typeof status === "string" && status.startsWith("fail")) out.push({ key: k, health: "falha", at, text: `A tarefa automática ${taskLabel(task)} falhou no último ciclo (${errorCategory(status.slice(5))}).`, fix: "Nível 1: o ciclo tenta de novo na próxima hora; se repetir, nível 3." });
+    else if (typeof status === "string" && status.startsWith("fail")) out.push({ key: k, health: "falha", at, text: `A tarefa automática ${taskLabel(task)} falhou na última rodada (motivo: ${errorCategory(status.slice(5))}).`, fix: "Você não precisa fazer nada. Ela tenta de novo sozinha na próxima hora; se falhar de novo, eu corrijo." });
   }
   return out;
 }
@@ -73,26 +75,26 @@ export function validPostSaleStatus(v, now) {
 export function observePostSale(read, now) {
   if (read.state === "ausente") return [];
   const v = read.value;
-  if (!(read.state === "ok" && validPostSaleStatus(v, now))) return [{ key: "vigia:sem-dados:pos-venda", health: "falha", at: now, text: "O estado do pós-venda está ilegível; não consigo confirmar se os e-mails saíram.", fix: "Nível 1: a próxima execução regrava o estado." }];
+  if (!(read.state === "ok" && validPostSaleStatus(v, now))) return [{ key: "vigia:sem-dados:pos-venda", health: "falha", at: now, text: "Não consegui ler o registro dos e-mails de pós-venda. Por isso não sei se eles saíram.", fix: "Você não precisa fazer nada. A próxima rodada refaz esse registro." }];
   const at = Date.parse(v.em);
   if (now - at > 3 * HOUR) return []; // vencido = desconhecido
   const out = [{ key: "vigia:sem-dados:pos-venda", health: "saudavel", at }];
   const code = POST_SALE_CODES[v.codigo] || "código não reconhecido";
   // Saúde só por igualdade EXPLÍCITA (NC-G6-1025-02): nenhum valor fora do esperado vira saudável por exclusão.
-  if (v.resultado === "inconclusivo") out.push({ key: "pos-venda:inconclusivo", health: "falha", at, text: `O pós-venda não conseguiu concluir (${code}). Nenhum e-mail foi reenviado às cegas.`, fix: "Nível 1: nova tentativa no próximo ciclo; se persistir, nível 2." });
+  if (v.resultado === "inconclusivo") out.push({ key: "pos-venda:inconclusivo", health: "falha", at, text: `Os e-mails de pós-venda não terminaram de sair (motivo: ${code}). Não reenviei nada sem conferir.`, fix: "Você não precisa fazer nada agora. Tento de novo na próxima hora; se continuar, aviso o que fazer." });
   else if (v.resultado === "ok" || v.resultado === "reconciliacao_pendente") out.push({ key: "pos-venda:inconclusivo", health: "saudavel", at });
-  if (v.resultado === "reconciliacao_pendente") out.push({ key: "pos-venda:pendente", health: "falha", at, text: `${v.pendentes} e-mail(s) do pós-venda com entrega não confirmada; estou conferindo, sem reenviar.`, fix: "Nível 1: reconciliação automática a cada hora." });
+  if (v.resultado === "reconciliacao_pendente") out.push({ key: "pos-venda:pendente", health: "falha", at, text: `${v.pendentes} e-mail(s) de pós-venda ainda sem confirmação de entrega. Estou conferindo, sem reenviar.`, fix: "Você não precisa fazer nada. Eu confiro de novo a cada hora." });
   else if (v.resultado === "ok") out.push({ key: "pos-venda:pendente", health: "saudavel", at });
   return out;
 }
 
 export function observeActions(read, now) {
-  const lost = (text) => [{ key: "vigia:sem-dados:github", health: "falha", at: now, text, fix: "Nível 3: conferir o workflow vigia-actions." }];
+  const lost = (text) => [{ key: "vigia:sem-dados:github", health: "falha", at: now, text, fix: "Precisa de correção técnica. Eu cuido disso e aviso se depender de você." }];
   if (read.state === "ausente") return [];
   const v = read.value;
-  if (read.state !== "ok" || !obj(v) || v.schema !== 2 || !obj(v.workflows) || !validAt(Date.parse(v.at), now)) return lost("O resumo dos workflows do GitHub está ilegível ou com data inválida.");
+  if (read.state !== "ok" || !obj(v) || v.schema !== 2 || !obj(v.workflows) || !validAt(Date.parse(v.at), now)) return lost("Não consegui ler o resumo do monitor do GitHub (as verificações automáticas do código).");
   const at = Date.parse(v.at);
-  if (now - at > 3 * HOUR) return lost("O vigia dos workflows do GitHub está sem dados há mais de 3 h.");
+  if (now - at > 3 * HOUR) return lost("O monitor do GitHub está há mais de 3 horas sem receber dados.");
   const out = [{ key: "vigia:sem-dados:github", health: "saudavel", at }];
   for (const wf of WATCHED_WORKFLOWS) {
     const w = v.workflows[wf];
@@ -102,14 +104,14 @@ export function observeActions(read, now) {
     const runId = Number.isSafeInteger(w.run_id) && w.run_id > 0 ? w.run_id : null;
     if (w.state === "saudavel") { out.push({ key: "github:" + wf, health: "saudavel", at: runAt }); continue; }
     const rerun = w.rerun === "feita" ? " Já mandei repetir uma vez." : w.rerun === "incerta" ? " Pedi para repetir e a resposta não chegou; não vou pedir de novo." : "";
-    out.push({ key: "github:" + wf, health: "falha", at: runAt, text: `O workflow "${wf}" falhou na gh-pages.${rerun}${runId ? "\n" + REPO_RUNS + runId : ""}`, fix: w.rerun === "feita" ? "Nível 1: repetição automática em andamento." : "Nível 3: diagnóstico pelo log do run." });
+    out.push({ key: "github:" + wf, health: "falha", at: runAt, text: `A verificação automática "${wf}" falhou no código publicado.${rerun}${runId ? "\n" + REPO_RUNS + runId : ""}`, fix: w.rerun === "feita" ? "Você não precisa fazer nada. Ela já está rodando de novo." : "Precisa de análise técnica. Eu olho o registro e aviso se depender de você." });
   }
   return out;
 }
 
 export async function collectObservations(env, now = new Date()) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
-  if (!kv?.get) return [{ key: "vigia:sem-dados:kv", health: "falha", at: now.getTime(), text: "O armazenamento principal está indisponível.", fix: "Nível 3." }];
+  if (!kv?.get) return [{ key: "vigia:sem-dados:kv", health: "falha", at: now.getTime(), text: "O armazenamento principal do sistema não respondeu.", fix: "Precisa de correção técnica. Eu cuido disso e aviso se depender de você." }];
   const t = now.getTime();
   const [cron, post, actions] = await Promise.all([readJson(kv, CRON_BEAT_KEY), readJson(kv, POST_SALE_STATUS_KEY), readJson(kv, VIGIA_ACTIONS_KEY)]);
   return [...observeCron(cron, t), ...observePostSale(post, t), ...observeActions(actions, t)];

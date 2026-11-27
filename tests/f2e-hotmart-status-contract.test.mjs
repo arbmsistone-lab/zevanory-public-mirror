@@ -61,15 +61,15 @@ test("regressão no motor: incidente inconclusivo aberto → registro posterior 
   const snap = { today: [{ channel: "blog", status: "publicado", at: new Date(T).toISOString() }, { channel: "bluesky", status: "publicado", at: new Date(T).toISOString() }] };
   const run = (at) => chat.runOwnerChatSentinel({ ZEVANORY_PRIVATE_ARTIFACTS: store, DATABASE_URL: "x" }, new Date(at), { sqlFactory: () => sql, snapshot: async () => snap });
   await run(T + 60000);
-  assert.equal(sql.rows.filter((r) => /PROBLEMA.*pós-venda/.test(r.body)).length, 1);
+  assert.equal(sql.rows.filter((r) => /Problema.*pós-venda/.test(r.body)).length, 1);
   data.set(KEY, JSON.stringify({ ...st("inconclusivo", "post_sale_inconclusive"), em: new Date(T + 3600000).toISOString(), resultado: ["inconclusivo"] }));
   await run(T + 3600000 + 60000); await run(T + 2 * 3600000);
-  assert.equal(sql.rows.filter((r) => /RESOLVIDO/.test(r.body)).length, 0, "array não pode resolver");
+  assert.equal(sql.rows.filter((r) => /Resolvido/.test(r.body)).length, 0, "array não pode resolver");
   data.set(KEY, JSON.stringify({ ...st("ok", "completed"), em: new Date(T + 2 * 3600000).toISOString() }));
   await run(T + 2 * 3600000 + 60000);
-  assert.equal(sql.rows.filter((r) => /PROBLEMA.*pós-venda está ilegível/.test(r.body)).length, 1, "o array é falha de leitura, não saúde");
-  assert.equal(sql.rows.filter((r) => /RESOLVIDO — O pós-venda não conseguiu concluir/.test(r.body)).length, 1, "saúde real posterior resolve o inconclusivo");
-  assert.equal(sql.rows.filter((r) => /RESOLVIDO — O estado do pós-venda está ilegível/.test(r.body)).length, 1, "e a falha de leitura");
+  assert.equal(sql.rows.filter((r) => /Problema: Não consegui ler o registro dos e-mails de pós-venda/.test(r.body)).length, 1, "o array é falha de leitura, não saúde");
+  assert.equal(sql.rows.filter((r) => /Resolvido: Os e-mails de pós-venda não terminaram de sair/.test(r.body)).length, 1, "saúde real posterior resolve o inconclusivo");
+  assert.equal(sql.rows.filter((r) => /Resolvido: Não consegui ler o registro dos e-mails de pós-venda/.test(r.body)).length, 1, "e a falha de leitura");
 });
 
 test("mutante: sem coerência código×resultado, o contraditório passaria", async () => {
