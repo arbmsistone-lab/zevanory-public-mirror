@@ -111,8 +111,17 @@ jobs:
                   text=(root/p).read_text("utf-8","ignore")
                   for m in re.finditer(r"\buses:\s*([^\s#]+)",text):
                       action_refs.append(m.group(1))
-          unversioned=[x for x in action_refs if "@" not in x]
-          if unversioned: raise SystemExit("unversioned_ci_action_ref")
+          # Referência local (./...) é um workflow/ação do PRÓPRIO commit certificado: fixada pelo SHA da release.
+          # Precisa existir na árvore; remota sem @ continua reprovando.
+          local_refs=sorted(set(x for x in action_refs if x.startswith("./")))
+          missing_local=[x for x in local_refs if not (root/x[2:]).is_file() and not (root/x[2:]/"action.yml").is_file() and not (root/x[2:]/"action.yaml").is_file()]
+          if missing_local:
+              print("LOCAL_CI_REF_MISSING",missing_local)
+              raise SystemExit("local_ci_action_ref_missing")
+          unversioned=[x for x in action_refs if "@" not in x and not x.startswith("./")]
+          if unversioned:
+              print("UNVERSIONED_CI_ACTION_REFS",sorted(set(unversioned)))
+              raise SystemExit("unversioned_ci_action_ref")
 
           sbom={
             "bomFormat":"CycloneDX","specVersion":"1.6","serialNumber":f"urn:uuid:zevanory-p08-{expected}",
@@ -136,7 +145,7 @@ jobs:
             "ecosystem_status":eco["status"],"packages":eco["packages"],"osv":eco["osv"],
             "method":"deterministic tracked-file manifest discovery; PyPI exact pins + OSV querybatch",
             "ci_action_refs":sorted(set(action_refs)),
-            "ci_action_refs_all_versioned":not unversioned,"verdict":"PASS"}
+            "ci_action_refs_all_versioned":not unversioned,"ci_local_refs_pinned_by_release_sha":local_refs,"verdict":"PASS"}
           pathlib.Path("p08-sca.json").write_text(json.dumps(sca,sort_keys=True,indent=2)+"\n")
 
           proof={"schema":"zevanory.p08.supply-chain.v1","pillar":"P08","verdict":"PROVED",
