@@ -204,6 +204,14 @@ export function structuredFromSources(sources, entry) {
   if (vals.length > 1) return { state: "divergent", detail: "sources:" + vals.join("|"), values: vals };
   return rs[0];
 }
+// Diagnóstico por fonte (sem conteúdo): tamanho, quantos blocos __NUXT_DATA__ e o que a leitura achou.
+export function structuredDiag(srcs, entry) {
+  return srcs.map(([src, h]) => {
+    const html = typeof h === "string" ? h : "";
+    const r = html ? structuredOfferPrice(html, entry) : { state: "absent" };
+    return { src, bytes: html.length, nuxt_scripts: [...html.matchAll(NUXT_SCRIPT)].length, state: r.state, ...(r.detail ? { detail: r.detail } : {}), ...(r.value_brl ? { value_brl: r.value_brl } : {}) };
+  });
+}
 export function decideDirectCheckout(cls, text, entry, st = { state: "absent" }) {
   if (cls.state === "mismatch" || cls.state === "unverifiable") return { verdict: FAIL, reason: cls.reason };
   if (cls.state === "closed") return { verdict: FAIL, reason: "authorized_direct_open_but_closed" };
@@ -546,11 +554,14 @@ export async function runLive({ allow, direct = null, fetchImpl = fetch, renderC
     const cls = got.error && !got.body ? { state: "unverifiable", reason: got.error, identity: null } : classifyCheckout(got, p, allow);
     // Preço: texto da página (renderizada ou não) + texto visível do HTML inicial do servidor (sem scripts), do mesmo GET.
     const priceText = searchableText(got.body || "") + " " + searchableText(String(got.ssr || "").replace(/<script\b[\s\S]*?<\/script>/gi, " "));
-    // Preço estruturado da oferta: HTML bruto do servidor (ssr_raw) e página obtida (body), cada um lido à parte.
-    const st = de ? structuredFromSources([got.ssr_raw, got.body], de) : null;
+    // Preço estruturado da oferta: HTML bruto do servidor (ssr_raw), página obtida (body) e, com o navegador, um GET
+    // simples do mesmo link (sem navegador, sem cookie; mesmo limite de hosts), cada um lido à parte.
+    const plain = de && renderCheckout ? await safeGet(href, { fetchImpl, allowHosts: allow.redirect_hosts }) : null;
+    const srcs = [["ssr_raw", got.ssr_raw], ["body", got.body], ["plain_get", plain?.body]];
+    const st = de ? structuredFromSources(srcs.map((x) => x[1]), de) : null;
     const d = de ? decideDirectCheckout(cls, priceText, de, st) : decideCheckout(em, cls);
     results.push({ link: href, source: "live:checkout", slug: p.slug, verdict: d.verdict, reason: sm.mode ? d.reason : sm.reason,
-      ...(de ? { authorized_direct: true, price_expected: de.price_cash_brl, prices_seen: cashPrices(priceText), structured: st } : {}),
+      ...(de ? { authorized_direct: true, price_expected: de.price_cash_brl, prices_seen: cashPrices(priceText), structured: st, structured_sources: structuredDiag(srcs, de), ...(plain ? { plain_get_status: plain.status } : {}) } : {}),
       http_status: got.status, hops: got.hops || [], state: cls.state, identity: cls.identity, ...(got.blocked_non_get !== undefined ? { blocked_non_get: got.blocked_non_get } : {}) });
   }
   return buildReport("live", results, { started_at: started, finished_at: new Date(now()).toISOString(), sales_mode: sm.mode, sales_mode_reason: sm.reason, hotmart_channel: hc.open, hotmart_channel_reason: hc.reason,
@@ -573,6 +584,8 @@ async function main(argv) {
   const json = JSON.stringify(report, null, 2) + "\n";
   if (out) writeFileSync(out, json);
   for (const r of report.results) console.log(`${r.verdict} ${r.source} ${r.slug ?? "-"} ${r.reason}${r.link ? " " + r.link : ""}`);
+  for (const r of report.results) if (r.structured_sources) console.log(`P18_STRUCTURED ${r.slug} state=${r.structured?.state}${r.structured?.detail ? " detail=" + r.structured.detail : ""} ` +
+    r.structured_sources.map((x) => `${x.src}=${x.bytes}b/nuxt${x.nuxt_scripts}/${x.state}${x.detail ? ":" + x.detail : ""}${x.value_brl ? ":" + x.value_brl : ""}`).join(" ") + (r.plain_get_status !== undefined ? ` plain_get_http=${r.plain_get_status}` : ""));
   console.log(`P18_COMMERCIAL mode=${report.mode} verdict=${report.verdict} total=${report.counts.total} pass=${report.counts.pass} fail=${report.counts.fail}${report.sales_mode !== undefined ? " sales_mode=" + report.sales_mode : ""}${report.hotmart_channel !== undefined ? " hotmart_channel=" + report.hotmart_channel : ""}`);
   return report.verdict === PASS ? 0 : 1;
 }
