@@ -161,3 +161,21 @@ test("[BR9] saída encerra a sessão do PAINEL no chat: passe emitido ANTES da s
   const o3 = await post(h3, "/api/admin/owner-chat/logout", {}, { cookie: c3 + "; " + sidCookie });
   assert.equal(o3.status, 503, "[BR9] falha ao encerrar = não confirmado");
 });
+
+test("[BR10] sair encerra TODAS as sessões de chat daquele login do painel: duas abas e renovação em andamento", async () => {
+  const h = harness();
+  const a = sessionCookie(await exchange(h, await ticket())).split(";")[0];          // aba A
+  const b = sessionCookie(await exchange(h, await ticket())).split(";")[0];          // aba B (outro cookie, mesmo login)
+  const other = sessionCookie(await exchange(h, await ticket({ sid: "w".repeat(43) }))).split(";")[0]; // outro login
+  assert.equal((await feed(h, a)).status, 200); assert.equal((await feed(h, b)).status, 200);
+  const out = await post(h, "/api/admin/owner-chat/logout", {}, { cookie: a + "; zv_owner_chat_sid=" + SID });
+  assert.equal((await out.json()).panel_session_ended, true);
+  assert.equal((await feed(h, a)).status, 401, "[BR10] aba A sem acesso");
+  assert.equal((await feed(h, b)).status, 401, "[BR10] aba B sem acesso na hora");
+  assert.equal((await post(h, "/api/admin/owner-chat/message", { text: "status" }, { cookie: b })).status, 401, "[BR10] envio da aba B recusado");
+  assert.equal((await feed(h, other)).status, 200, "[BR10] outro login do painel não é afetado");
+  // Renovação que criou a sessão no banco depois do marcador (corrida): a regra de validade a recusa.
+  const late = "c".repeat(64); const { createSession } = await import("../worker/owner-session.mjs");
+  await createSession(h.sql, await sha256Hex(late), 300, await bridge.panelEndMarker(SID));
+  assert.equal((await feed(h, "zv_owner_chat=" + late)).status, 401, "[BR10] sessão criada depois da saída nunca vale");
+});

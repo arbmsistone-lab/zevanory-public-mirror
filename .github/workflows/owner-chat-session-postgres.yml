@@ -60,8 +60,8 @@ jobs:
           node --test tests/integration/owner-chat-session-postgres.test.mjs 2>&1 | grep -v '"event":"owner_chat_pin_failed"' | tee s.txt
           echo "::notice title=COUNTS_SESSION::$(grep -E '^# (tests|pass|fail|skipped|todo|cancelled) ' s.txt | paste -sd' ' -)"
           echo "::notice title=RACE::$(grep -oE 'OWNER_CHAT_PG_RACE .*' s.txt)"
-          grep -qx "# tests 10" s.txt && grep -qx "# pass 10" s.txt && grep -qx "# skipped 0" s.txt && grep -qx "# todo 0" s.txt && grep -qx "# fail 0" s.txt && grep -qx "# cancelled 0" s.txt
-          test "$(grep -c '^# OWNER_CHAT_PG_COUNTERPROOF .*=DETECTED$' s.txt)" = "6"
+          grep -qx "# tests 11" s.txt && grep -qx "# pass 11" s.txt && grep -qx "# skipped 0" s.txt && grep -qx "# todo 0" s.txt && grep -qx "# fail 0" s.txt && grep -qx "# cancelled 0" s.txt
+          test "$(grep -c '^# OWNER_CHAT_PG_COUNTERPROOF .*=DETECTED$' s.txt)" = "7"
       - name: Rollback seguro (R1.2) para a fase A certificada (contagem exata)
         env:
           T4_PG_HOST: localhost

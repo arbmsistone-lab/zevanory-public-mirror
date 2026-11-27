@@ -75,7 +75,7 @@ export async function handlePanelSession(request, env = {}, { sql, authority, kv
   const ttl = Math.min(PANEL_SESSION_TTL_S, Math.floor((v.exp - at) / 1000));
   const previous = await sessionHash(request);
   const token = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
-  try { if (!(await createSession(sql, await sha256Hex(token), ttl))) throw new Error("no_row"); }
+  try { if (!(await createSession(sql, await sha256Hex(token), ttl, endMarker))) throw new Error("no_row"); }
   catch { return json({ error: "owner_chat_unavailable" }, 503); }
   // Renovação: a sessão anterior deste navegador é revogada (melhor esforço; ela venceria sozinha em até 5 min).
   // Corrida com a saída: se o painel foi encerrado entre a conferência e a criação, a sessão nova é revogada já.

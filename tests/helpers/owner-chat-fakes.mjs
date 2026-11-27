@@ -4,15 +4,16 @@ export function fakeSql() {
   const lock = { holder: null, since: null }; const neurons = { n: 0, fail: false }; const vstate = new Map();
   // Sessões e tentativas de PIN (worker/owner-session.mjs), com injeção de falha por operação.
   let nextIpWindow = 0; const sessions = new Map(); const attempts = new Map(); const sfail = { check: false, create: false, revoke: false, reserve: false, pending: false };
-  const valid = (h) => { const x = sessions.get(h); return !!x && x.revoked === null && x.expires > clock; };
+  const valid = (h) => { const x = sessions.get(h); return !!x && x.revoked === null && x.expires > clock && !(x.marker && sessions.has(x.marker)); };
   const out = (r) => ({ id: String(r.id), seq: String(r.seq ?? r.id), created_at: new Date(r.created_at).toISOString(), sender: r.sender, kind: r.kind, body: r.body, action_type: r.action_type, action_expires_at: r.action_expires_at ? new Date(r.action_expires_at).toISOString() : null, action_state: r.action_state });
   return { rows, log, lock, neurons, vstate, sessions, attempts, sfail, valid, tick: (ms) => { clock += ms; }, query: async (text, p = []) => {
     const tag = (/\/\*owner-chat:([a-z-]+)\*\//.exec(text) || [])[1] || ((/\/\*vigia:([a-z-]+)\*\//.exec(text) || [])[1] ? "vigia-" + /\/\*vigia:([a-z-]+)\*\//.exec(text)[1] : null) || (/\/\*chat:neurons\*\//.test(text) ? "neurons" : /^\s*(create|alter)\b/i.test(text) ? "ddl" : "?");
     log.push(tag);
     if (tag === "ddl") return [];
     if (tag === "session-check") { if (sfail.check) throw new Error("db"); return [{ n: valid(p[0]) ? 1 : 0 }]; }
-    if (tag === "session-create") { if (sfail.create) throw new Error("db"); sessions.set(p[0], { expires: clock + p[1] * 1000, revoked: null }); return [{ ok: 1 }]; }
+    if (tag === "session-create") { if (sfail.create) throw new Error("db"); sessions.set(p[0], { expires: clock + p[1] * 1000, revoked: null, marker: p[2] ?? null }); return [{ ok: 1 }]; }
     if (tag === "panel-end") { if (sfail.revoke) throw new Error("db"); const x = sessions.get(p[0]); if (x) { if (x.revoked === null) x.revoked = clock; } else sessions.set(p[0], { expires: clock + 14 * 3600000, revoked: clock }); return []; }
+    if (tag === "panel-revoke-all") { if (sfail.revoke) throw new Error("db"); for (const x of sessions.values()) if (x.marker === p[0] && x.revoked === null) x.revoked = clock; return []; }
     if (tag === "panel-ended") { if (sfail.check) throw new Error("db"); return [{ n: sessions.has(p[0]) ? 1 : 0 }]; }
     if (tag === "ticket-claim") { if (sfail.create) throw new Error("db"); if (sessions.has(p[0])) return []; sessions.set(p[0], { expires: clock + 600000, revoked: clock }); return [{ ok: 1 }]; }
     if (tag === "session-revoke") { if (sfail.revoke) throw new Error("db"); const x = sessions.get(p[0]); if (x && x.revoked === null) x.revoked = clock; return []; }
