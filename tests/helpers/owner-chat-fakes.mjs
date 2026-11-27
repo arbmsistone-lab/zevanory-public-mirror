@@ -12,6 +12,8 @@ export function fakeSql() {
     if (tag === "ddl") return [];
     if (tag === "session-check") { if (sfail.check) throw new Error("db"); return [{ n: valid(p[0]) ? 1 : 0 }]; }
     if (tag === "session-create") { if (sfail.create) throw new Error("db"); sessions.set(p[0], { expires: clock + p[1] * 1000, revoked: null }); return [{ ok: 1 }]; }
+    if (tag === "panel-end") { if (sfail.revoke) throw new Error("db"); const x = sessions.get(p[0]); if (x) { if (x.revoked === null) x.revoked = clock; } else sessions.set(p[0], { expires: clock + 14 * 3600000, revoked: clock }); return []; }
+    if (tag === "panel-ended") { if (sfail.check) throw new Error("db"); return [{ n: sessions.has(p[0]) ? 1 : 0 }]; }
     if (tag === "ticket-claim") { if (sfail.create) throw new Error("db"); if (sessions.has(p[0])) return []; sessions.set(p[0], { expires: clock + 600000, revoked: clock }); return [{ ok: 1 }]; }
     if (tag === "session-revoke") { if (sfail.revoke) throw new Error("db"); const x = sessions.get(p[0]); if (x && x.revoked === null) x.revoked = clock; return []; }
     if (tag === "session-pending") { if (sfail.pending) throw new Error("db"); return [{ n: rows.filter((r) => r.action_session === p[0] && ["executando", "incerto"].includes(r.action_state)).length }]; }

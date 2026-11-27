@@ -118,7 +118,7 @@ tests/owner-chat-pin.test.mjs 19
 tests/owner-chat.test.mjs 27
 tests/owner-oauth-tiktok.test.mjs 3
 tests/owner-oauth.test.mjs 11
-tests/owner-panel-bridge.test.mjs 8
+tests/owner-panel-bridge.test.mjs 9
 tests/p03-pages-audit.test.mjs 10
 tests/p09-nurture-sequence.test.mjs 32
 tests/p12-entrega-ensaio.test.mjs 22

@@ -11,7 +11,7 @@
 //  4. O painel renova o passe a cada 2 min enquanto a sessão dele for válida. Sair do painel manda o chat encerrar
 //     (logout com revogação confirmada); sessão do painel vencida ou revogada = sem passe novo = o chat cai em até 5 min.
 import { bridgeSecret } from "./owner-oauth.mjs";
-import { claimTicket, createSession, revokeSession } from "./owner-session.mjs";
+import { claimTicket, createSession, revokeSession, panelSessionEnded } from "./owner-session.mjs";
 import { PIN_COOKIE, END_COOKIE, sha256Hex, sessionHash } from "./owner-pin.mjs";
 
 export const PANEL_SESSION_PATH = "/api/admin/owner-chat/panel-session";
@@ -31,22 +31,25 @@ const json = (data, status = 200, cookies = []) => {
 const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const same = (a, b) => { if (a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
 
-export async function ticketSignature(key, { ts, nonce, exp }) {
+// Cookie com a identificação (derivada, opaca) da sessão do painel: o logout a marca como encerrada no banco.
+export const PANEL_SID_COOKIE = "zv_owner_chat_sid";
+export const panelEndMarker = (sid) => sha256Hex("panel-sid:" + sid);
+export async function ticketSignature(key, { ts, nonce, exp, sid }) {
   const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return b64u(await crypto.subtle.sign("HMAC", k, enc.encode([PANEL_TICKET_PURPOSE, "session", ts, nonce, exp].join("\n"))));
+  return b64u(await crypto.subtle.sign("HMAC", k, enc.encode([PANEL_TICKET_PURPOSE, "session", ts, nonce, exp, sid].join("\n"))));
 }
 
 // Confere o passe sem efeito colateral. -> { ok, reason, exp }
 export async function verifyPanelTicket(key, t, now = Date.now()) {
   if (String(key || "").length < 32) return { ok: false, reason: "bridge_not_configured" };
-  const ts = String(t?.ts ?? ""), nonce = String(t?.nonce ?? ""), exp = String(t?.exp ?? ""), sig = String(t?.sig ?? "");
-  if (!/^\d{13}$/.test(ts) || !/^\d{13}$/.test(exp) || !/^[A-Za-z0-9_-]{40,128}$/.test(nonce) || !/^[A-Za-z0-9_-]{43}$/.test(sig)) return { ok: false, reason: "ticket_invalid" };
+  const ts = String(t?.ts ?? ""), nonce = String(t?.nonce ?? ""), exp = String(t?.exp ?? ""), sig = String(t?.sig ?? ""), sid = String(t?.sid ?? "");
+  if (!/^\d{13}$/.test(ts) || !/^\d{13}$/.test(exp) || !/^[A-Za-z0-9_-]{40,128}$/.test(nonce) || !/^[A-Za-z0-9_-]{43}$/.test(sig) || !/^[A-Za-z0-9_-]{43}$/.test(sid)) return { ok: false, reason: "ticket_invalid" };
   if (Math.abs(now - Number(ts)) > PANEL_TICKET_WINDOW_MS) return { ok: false, reason: "ticket_expired" };
   const e = Number(exp);
   if (e - now < PANEL_MIN_SESSION_S * 1000) return { ok: false, reason: "panel_session_expired" };
   if (e - now > PANEL_MAX_SESSION_AHEAD_MS) return { ok: false, reason: "ticket_invalid" };
-  if (!same(await ticketSignature(key, { ts, nonce, exp }), sig)) return { ok: false, reason: "ticket_invalid" };
-  return { ok: true, exp: e, nonce };
+  if (!same(await ticketSignature(key, { ts, nonce, exp, sid }), sig)) return { ok: false, reason: "ticket_invalid" };
+  return { ok: true, exp: e, nonce, sid };
 }
 
 // POST /api/admin/owner-chat/panel-session {ts, nonce, exp, sig}
@@ -63,18 +66,26 @@ export async function handlePanelSession(request, env = {}, { sql, authority, kv
   const at = now();
   const v = await verifyPanelTicket(key, t, at);
   if (!v.ok) return json({ error: v.reason }, v.reason === "bridge_not_configured" ? 503 : 401);
-  try { if (!(await claimTicket(sql, await sha256Hex("panel-ticket:" + v.nonce)))) return json({ error: "ticket_used" }, 401); }
-  catch { return json({ error: "owner_chat_unavailable" }, 503); }
+  const endMarker = await panelEndMarker(v.sid);
+  try {
+    // Sessão do painel já encerrada no chat (Sair): nenhum passe dela vale, nem um emitido antes da saída.
+    if (await panelSessionEnded(sql, endMarker)) return json({ error: "panel_session_ended" }, 401);
+    if (!(await claimTicket(sql, await sha256Hex("panel-ticket:" + v.nonce)))) return json({ error: "ticket_used" }, 401);
+  } catch { return json({ error: "owner_chat_unavailable" }, 503); }
   const ttl = Math.min(PANEL_SESSION_TTL_S, Math.floor((v.exp - at) / 1000));
   const previous = await sessionHash(request);
   const token = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
   try { if (!(await createSession(sql, await sha256Hex(token), ttl))) throw new Error("no_row"); }
   catch { return json({ error: "owner_chat_unavailable" }, 503); }
   // Renovação: a sessão anterior deste navegador é revogada (melhor esforço; ela venceria sozinha em até 5 min).
+  // Corrida com a saída: se o painel foi encerrado entre a conferência e a criação, a sessão nova é revogada já.
+  try { if (await panelSessionEnded(sql, endMarker)) { await revokeSession(sql, await sha256Hex(token)); return json({ error: "panel_session_ended" }, 401); } }
+  catch { try { await revokeSession(sql, await sha256Hex(token)); } catch {} return json({ error: "owner_chat_unavailable" }, 503); }
   if (previous) { try { await revokeSession(sql, previous); } catch { /* vence sozinha */ } }
   console.info(JSON.stringify({ event: "owner_chat_panel_session", ttl_s: ttl, renewed: Boolean(previous) }));
   return json({ ok: true, expires_in: ttl }, 200, [
     `${PIN_COOKIE}=${token}; Path=/; Max-Age=${ttl}; HttpOnly; Secure; SameSite=Strict`,
+    `${PANEL_SID_COOKIE}=${v.sid}; Path=/; Max-Age=${ttl}; HttpOnly; Secure; SameSite=Strict`,
     `${END_COOKIE}=; Path=/; Max-Age=0; Secure; SameSite=Strict`,
   ]);
 }

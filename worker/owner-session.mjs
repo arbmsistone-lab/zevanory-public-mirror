@@ -50,6 +50,17 @@ export async function claimTicket(sql, markerHash) {
   const r = await sql.query(`/*owner-chat:ticket-claim*/ insert into zevanory_owner_chat_sessions (token_sha256, expires_at, revoked_at) values ($1, now() + interval '10 minutes', now()) on conflict (token_sha256) do nothing returning 1 as ok`, [markerHash]);
   return Number(r[0]?.ok) === 1;
 }
+// Fim da sessão do PAINEL que originou a sessão do chat (logout): linha-marcador revogada com a chave do painel. Depois
+// dela, nenhum passe daquela sessão do painel abre sessão de chat, nem um passe emitido antes da saída (até 14 h).
+export async function endPanelSession(sql, markerHash) {
+  if (!HEX64.test(String(markerHash || ""))) return false;
+  await sql.query(`/*owner-chat:panel-end*/ insert into zevanory_owner_chat_sessions (token_sha256, expires_at, revoked_at) values ($1, now() + interval '14 hours', now()) on conflict (token_sha256) do update set revoked_at = coalesce(zevanory_owner_chat_sessions.revoked_at, now())`, [markerHash]);
+  return true;
+}
+export async function panelSessionEnded(sql, markerHash) {
+  const r = await sql.query(`/*owner-chat:panel-ended*/ select count(*)::int as n from zevanory_owner_chat_sessions where token_sha256 = $1`, [markerHash]);
+  return Number(r[0]?.n) > 0;
+}
 // Revoga (idempotente). Retorna { revoked: true, pendingActions } só depois do commit do UPDATE. A contagem de ações
 // é uma instrução SEPARADA, depois do commit: vê toda ação autorizada antes da revogação (nenhuma depois é possível).
 export async function revokeSession(sql, hash) {

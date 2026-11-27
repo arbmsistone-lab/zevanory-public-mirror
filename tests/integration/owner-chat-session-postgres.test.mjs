@@ -371,11 +371,11 @@ async function reserveAttemptOriginal(sql, ipHash) {`);
 });
 
 // 27/11: passe do painel de uso único no PostgreSQL REAL (linha-marcador já revogada, chave primária atômica).
-test("passe do painel: 20 trocas simultâneas do mesmo passe = exatamente 1 sessão; marcador nunca vale; sessão de 5 min pelo relógio do banco", { skip: SKIP }, async () => {
+test("passe do painel: 20 trocas simultâneas do mesmo passe = exatamente 1 sessão; marcador nunca vale; 5 min pelo relógio do banco; passe anterior à saída não reabre", { skip: SKIP }, async () => {
   const h = harness();
   const bridge = await import(pathToFileURL(join(ROOT, "worker/owner-panel-bridge.mjs")).href);
   const key = "k".repeat(48); h.env.OWNER_OAUTH_BRIDGE_SECRET = key;
-  const t0 = { ts: String(Date.now()), nonce: "pg".padEnd(43, "q"), exp: String(Date.now() + 3600_000) };
+  const t0 = { ts: String(Date.now()), nonce: "pg".padEnd(43, "q"), exp: String(Date.now() + 3600_000), sid: "p".repeat(43) };
   const t = { ...t0, sig: await bridge.ticketSignature(key, t0) };
   const call = () => h.call(new Request(ORIGIN + bridge.PANEL_SESSION_PATH, { method: "POST", body: JSON.stringify(t), headers: { origin: ORIGIN, "x-owner-chat": "1", "content-type": "application/json" } }));
   const rs = await Promise.all(Array.from({ length: 20 }, call));
@@ -388,6 +388,13 @@ test("passe do painel: 20 trocas simultâneas do mesmo passe = exatamente 1 sess
   const hash = await pin.sha256Hex(c.split("=")[1]);
   assert.equal(q1(`select extract(epoch from (expires_at - created_at))::int as ttl from zevanory_owner_chat_sessions where token_sha256 = ${lit(hash)}`)[0].ttl, "300", "5 min");
   assert.equal((await feed(h, c)).status, 200);
-  q1(`update zevanory_owner_chat_sessions set expires_at = now() - interval '1 second' where token_sha256 = ${lit(hash)}`);
-  assert.equal((await feed(h, c)).status, 401, "vencida pelo relógio do banco");
+  // Passe emitido antes da saída, ainda não usado: depois do logout (com o cookie da sessão do painel) não reabre nada.
+  const t1 = { ts: String(Date.now()), nonce: "pg2".padEnd(43, "q"), exp: t0.exp, sid: t0.sid }; const early = { ...t1, sig: await bridge.ticketSignature(key, t1) };
+  const out = await h.call(new Request(ORIGIN + "/api/admin/owner-chat/logout", { method: "POST", body: "{}", headers: { origin: ORIGIN, "x-owner-chat": "1", "content-type": "application/json", cookie: c + "; zv_owner_chat_sid=" + t0.sid } }));
+  const ob = await out.json(); assert.equal(out.status, 200); assert.equal(ob.panel_session_ended, true, "sessão do painel encerrada no chat");
+  assert.equal((await feed(h, c)).status, 401, "sessão do chat revogada na hora");
+  const validBefore = n1(`select count(*) as n from zevanory_owner_chat_sessions where revoked_at is null and expires_at > now()`);
+  const replay = await h.call(new Request(ORIGIN + bridge.PANEL_SESSION_PATH, { method: "POST", body: JSON.stringify(early), headers: { origin: ORIGIN, "x-owner-chat": "1", "content-type": "application/json" } }));
+  assert.equal(replay.status, 401, "passe anterior à saída recusado"); assert.deepEqual(await replay.json(), { error: "panel_session_ended" });
+  assert.equal(n1(`select count(*) as n from zevanory_owner_chat_sessions where revoked_at is null and expires_at > now()`), validBefore, "o passe anterior não criou sessão válida");
 });

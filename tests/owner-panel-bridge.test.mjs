@@ -17,9 +17,10 @@ function harness({ env: extra = {}, kv = memKv(), sql = fakeSql(), authority } =
   return { sql, kv, env, call: (r) => chat.handleOwnerChat(r, env, deps) };
 }
 let n = 0;
-async function ticket({ key = KEY, ts = Date.now(), exp = Date.now() + 3600_000, nonce } = {}) {
+const SID = "s".repeat(43);
+async function ticket({ key = KEY, ts = Date.now(), exp = Date.now() + 3600_000, nonce, sid = SID } = {}) {
   nonce = nonce || ("n" + String(++n).padStart(4, "0")).padEnd(43, "x");
-  const t = { ts: String(ts), nonce, exp: String(exp) };
+  const t = { ts: String(ts), nonce, exp: String(exp), sid };
   return { ...t, sig: await bridge.ticketSignature(key, t) };
 }
 const post = (h, path, body, extra = {}) => h.call(new Request(ORIGIN + path, { method: "POST", body: typeof body === "string" ? body : JSON.stringify(body),
@@ -66,6 +67,8 @@ test("[BR3] passe adulterado, fora da janela de 60 s, de sessão do painel venci
     [await ticket({ exp: now + 10_000 }), "panel_session_expired"],
     [await ticket({ exp: now + 14 * 3600_000 }), "ticket_invalid"],
     [{ ts: "1", nonce: "a", exp: "1", sig: "b" }, "ticket_invalid"],
+    [{ ...(await ticket()), sid: "t".repeat(43) }, "ticket_invalid"],
+    [{ ...(await ticket()), sid: undefined }, "ticket_invalid"],
     [{}, "ticket_invalid"],
   ];
   for (const [t, reason] of cases) {
@@ -132,4 +135,28 @@ test("[BR8] página do chat: aceita renovação e encerramento só da origem do 
   assert.match(js, /fetch\('\/api\/admin\/owner-chat\/panel-session'/, "[BR8] renovação pela rota da ponte");
   assert.match(js, /if\(window\.parent!==window\)\{sairB\.hidden=true;/, "[BR8] Sair escondido no painel");
   assert.doesNotThrow(() => new Function(js));
+});
+
+test("[BR9] saída encerra a sessão do PAINEL no chat: passe emitido ANTES da saída não reabre a sessão; outra sessão do painel sim", async () => {
+  const h = harness();
+  const early = await ticket(); // emitido antes da saída, ainda não usado
+  const c = sessionCookie(await exchange(h, await ticket())).split(";")[0];
+  const sidCookie = "zv_owner_chat_sid=" + SID;
+  const out = await post(h, "/api/admin/owner-chat/logout", {}, { cookie: c + "; " + sidCookie });
+  const body = await out.json();
+  assert.equal(out.status, 200); assert.equal(body.revoked, true, "[BR9] sessão do chat revogada"); assert.equal(body.panel_session_ended, true, "[BR9] sessão do painel encerrada no chat");
+  const replay = await exchange(h, early);
+  assert.equal(replay.status, 401, "[BR9] passe anterior à saída recusado"); assert.deepEqual(await replay.json(), { error: "panel_session_ended" });
+  assert.equal(sessionCookie(replay), "", "[BR9] sem cookie");
+  assert.equal([...h.sql.sessions.values()].filter((x) => x.revoked === null).length, 0, "[BR9] nenhuma sessão válida");
+  assert.equal((await exchange(h, await ticket({ sid: "u".repeat(43) }))).status, 200, "[BR9] novo login no painel (outra sessão) funciona");
+  // Saída só com o cookie do painel (sessão do chat já vencida) também encerra.
+  const h2 = harness(); const pre = await ticket();
+  const o2 = await post(h2, "/api/admin/owner-chat/logout", {}, { cookie: sidCookie });
+  assert.equal((await o2.json()).panel_session_ended, true, "[BR9] encerra só com o cookie do painel");
+  assert.equal((await exchange(h2, pre)).status, 401, "[BR9] e o passe anterior não vale");
+  // Banco falhando ao encerrar: saída NÃO confirmada (503), nada de 'encerrada'.
+  const h3 = harness(); const c3 = sessionCookie(await exchange(h3, await ticket())).split(";")[0]; h3.sql.sfail.revoke = true;
+  const o3 = await post(h3, "/api/admin/owner-chat/logout", {}, { cookie: c3 + "; " + sidCookie });
+  assert.equal(o3.status, 503, "[BR9] falha ao encerrar = não confirmado");
 });

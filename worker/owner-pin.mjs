@@ -10,7 +10,7 @@
 // * CSRF: login/saída só por POST com Origin igual e cabeçalho x-owner-chat: 1.
 // * Encerramento pendente (R2): cookie `zv_owner_chat_end=1` gravado pela página ao clicar em Sair. Com ele, o servidor
 //   não entrega nada privado (409 logout_pending) até um logout confirmado; só o POST de logout (com CSRF) revoga.
-import { SESSION_AUTHORITY, SESSION_TTL_S, PIN_IP_MAX, PIN_IP_WINDOW_S, PIN_GLOBAL_MAX, checkSession, createSession, revokeSession, reserveAttempt, releaseAttempt } from "./owner-session.mjs";
+import { SESSION_AUTHORITY, SESSION_TTL_S, PIN_IP_MAX, PIN_IP_WINDOW_S, PIN_GLOBAL_MAX, checkSession, createSession, revokeSession, reserveAttempt, releaseAttempt, endPanelSession } from "./owner-session.mjs";
 export { PIN_IP_MAX, PIN_IP_WINDOW_S, PIN_GLOBAL_MAX };
 export const OWNER_PIN_PATHS = Object.freeze({ login: "/api/admin/owner-chat/pin", logout: "/api/admin/owner-chat/logout" });
 export const PIN_COOKIE = "zv_owner_chat";
@@ -48,6 +48,8 @@ const json = (data, status = 200, cookies = []) => {
 };
 const CLEAR_SESSION = `${PIN_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`;
 const CLEAR_END = `${END_COOKIE}=; Path=/; Max-Age=0; Secure; SameSite=Strict`;
+const PANEL_SID_COOKIE_NAME = "zv_owner_chat_sid";
+const CLEAR_SID = `${PANEL_SID_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`;
 
 // Hash do token do cookie (formato estrito) ou null.
 export async function sessionHash(request) {
@@ -106,12 +108,18 @@ export async function handlePinLogout(request, env = {}, { sql } = {}) {
   if (request.method !== "POST") return new Response(null, { status: 405 });
   if (request.headers.get("origin") !== url.origin || request.headers.get("x-owner-chat") !== "1") return json({ error: "forbidden" }, 403);
   const hash = await sessionHash(request);
-  if (!hash) return json({ ok: true, revoked: false, reason: "no_session" }, 200, [CLEAR_SESSION, CLEAR_END]);
+  // Sessão aberta pelo painel (owner-panel-bridge.mjs): a sessão do painel que a originou é marcada como encerrada
+  // ANTES da revogação, então nenhum passe dela (nem um emitido antes desta saída) abre sessão de chat depois.
+  const sid = cookieValue(request, PANEL_SID_COOKIE_NAME);
+  const panelSid = sid && /^[A-Za-z0-9_-]{43}$/.test(sid) ? sid : null;
+  if (!hash && !panelSid) return json({ ok: true, revoked: false, reason: "no_session" }, 200, [CLEAR_SESSION, CLEAR_END, CLEAR_SID]);
   if (!sql) return json({ ok: false, error: "revoke_unconfirmed" }, 503);
-  let out;
-  try { out = await revokeSession(sql, hash); }
-  catch { console.warn(JSON.stringify({ event: "owner_chat_logout_unconfirmed" })); return json({ ok: false, error: "revoke_unconfirmed" }, 503); }
-  return json({ ok: true, revoked: true, pending_actions: out.pendingActions }, 200, [CLEAR_SESSION, CLEAR_END]);
+  let out = { pendingActions: null };
+  try {
+    if (panelSid) await endPanelSession(sql, await sha256Hex("panel-sid:" + panelSid));
+    if (hash) out = await revokeSession(sql, hash);
+  } catch { console.warn(JSON.stringify({ event: "owner_chat_logout_unconfirmed" })); return json({ ok: false, error: "revoke_unconfirmed" }, 503); }
+  return json({ ok: true, revoked: Boolean(hash), ...(panelSid ? { panel_session_ended: true } : {}), pending_actions: out.pendingActions }, 200, [CLEAR_SESSION, CLEAR_END, CLEAR_SID]);
 }
 
 export const PIN_PAGE_HEADERS = Object.freeze({
