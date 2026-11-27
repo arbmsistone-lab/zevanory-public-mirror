@@ -433,9 +433,11 @@ export async function runLive({ allow, direct = null, fetchImpl = fetch, renderC
     if (!shape.ok) { results.push({ link: href, source: "live:checkout", slug: p.slug, verdict: FAIL, reason: shape.reason }); continue; }
     const got = renderCheckout ? await renderCheckout(href) : await safeGet(href, { fetchImpl, allowHosts: allow.redirect_hosts });
     const cls = got.error && !got.body ? { state: "unverifiable", reason: got.error, identity: null } : classifyCheckout(got, p, allow);
-    const d = de ? decideDirectCheckout(cls, searchableText(got.body || ""), de) : decideCheckout(em, cls);
+    // Preço: texto da página (renderizada ou não) + texto visível do HTML inicial do servidor (sem scripts), do mesmo GET.
+    const priceText = searchableText(got.body || "") + " " + searchableText(String(got.ssr || "").replace(/<script\b[\s\S]*?<\/script>/gi, " "));
+    const d = de ? decideDirectCheckout(cls, priceText, de) : decideCheckout(em, cls);
     results.push({ link: href, source: "live:checkout", slug: p.slug, verdict: d.verdict, reason: sm.mode ? d.reason : sm.reason,
-      ...(de ? { authorized_direct: true, price_expected: de.price_cash_brl, prices_seen: cashPrices(searchableText(got.body || "")) } : {}),
+      ...(de ? { authorized_direct: true, price_expected: de.price_cash_brl, prices_seen: cashPrices(priceText) } : {}),
       http_status: got.status, hops: got.hops || [], state: cls.state, identity: cls.identity, ...(got.blocked_non_get !== undefined ? { blocked_non_get: got.blocked_non_get } : {}) });
   }
   return buildReport("live", results, { started_at: started, finished_at: new Date(now()).toISOString(), sales_mode: sm.mode, sales_mode_reason: sm.reason, hotmart_channel: hc.open, hotmart_channel_reason: hc.reason,

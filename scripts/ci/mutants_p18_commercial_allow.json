@@ -407,7 +407,13 @@
           "assertion_pattern": "[P18C.D4] preço diferente do decidido"
         }
       ],
-      "secondary": []
+      "secondary": [
+        {
+          "test_pattern": "P18C.D7: preço lido do HTML inicial do servidor",
+          "assertion_pattern": "[P18C.D7] preço errado no HTML do servidor reprova",
+          "justification": "o preço errado (87,00) no HTML do servidor deixa de reprovar sem a comparação com o decidido"
+        }
+      ]
     },
     "K30 preço ilegível aceito": {
       "primary": [
@@ -416,7 +422,13 @@
           "assertion_pattern": "[P18C.D4] preço ilegível"
         }
       ],
-      "secondary": []
+      "secondary": [
+        {
+          "test_pattern": "P18C.D7: preço lido do HTML inicial do servidor",
+          "assertion_pattern": "[P18C.D7] preço só dentro de script não conta",
+          "justification": "sem preço legível (só dentro de script), a mutação aceita e o motivo authorized_direct_price_unverified some"
+        }
+      ]
     },
     "K31 preço ambíguo aceito": {
       "primary": [
@@ -513,6 +525,24 @@
           "justification": "a contagem de motivos direct_price_matches_catalog não muda (ok continua true); só a divergência deixa de reprovar — secundária por segurança, pode não disparar"
         }
       ]
+    },
+    "K39 HTML inicial do servidor ignorado no preço": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D7: preço lido do HTML inicial do servidor",
+          "assertion_pattern": "[P18C.D7] preço do HTML do servidor"
+        }
+      ],
+      "secondary": []
+    },
+    "K40 preço dentro de script aceito": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D7: preço lido do HTML inicial do servidor",
+          "assertion_pattern": "[P18C.D7] preço só dentro de script não conta"
+        }
+      ],
+      "secondary": []
     }
   }
 }
