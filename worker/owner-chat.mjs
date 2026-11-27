@@ -485,10 +485,10 @@ button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:#25
 form{display:flex;gap:8px;padding:12px 16px;background:var(--card)}input{flex:1;min-width:0;font:inherit;padding:12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:var(--tx)}
 .m{overflow-wrap:anywhere}button{flex:0 0 auto}
 html[data-theme=light]{--bg:#f8fafc;--card:#ffffff;--me:#2563eb;--zv:#e2e8f0;--tx:#0f172a;--mu:#475569}html[data-theme=light] .owner{color:#fff}html[data-theme=light] input{background:#fff;border-color:#cbd5e1}html[data-theme=light] .sair{border-color:#cbd5e1;color:var(--tx)}
-@media (max-width:360px){body{font-size:14px}header{padding:8px 10px;font-size:14px}#log{padding:8px;gap:8px}.m{max-width:100%;padding:8px 10px}form{padding:8px;gap:6px}input{padding:8px}button{padding:8px 10px}.t{font-size:11px}}
-</style></head><body><header>Epaminondas · ZEVANORY <span><small id="st">conectando…</small><button id="sair" type="button" class="sair">Sair</button></span></header><main id="log" aria-live="polite"></main>
+header small{white-space:nowrap}@media (max-width:360px){body{font-size:14px}header{padding:8px 10px;font-size:14px}header .sub{display:none}#log{padding:8px;gap:8px}.m{max-width:100%;padding:8px 10px}form{padding:8px;gap:6px}input{padding:8px}button{padding:8px 10px}.t{font-size:11px}}
+</style></head><body><header><span class="tt">Epaminondas<span class="sub"> · ZEVANORY</span></span><span><small id="st">conectando…</small><button id="sair" type="button" class="sair">Sair</button></span></header><main id="log" aria-live="polite"></main>
 <div id="fim" role="status" hidden><p id="fimmsg"></p><button id="retry" type="button" hidden>Tentar encerrar de novo</button></div>
-<form id="f"><input id="q" autocomplete="off" maxlength="1500" placeholder="Fale com o Epaminondas (ex.: status, vendas, o que está parado)"><button id="b">Enviar</button></form>
+<form id="f"><input id="q" autocomplete="off" maxlength="1500" placeholder="Escreva aqui (ex.: status, vendas)"><button id="b">Enviar</button></form>
 <script>(()=>{const log=document.getElementById('log'),st=document.getElementById('st'),q=document.getElementById('q'),b=document.getElementById('b'),f=document.getElementById('f'),sairB=document.getElementById('sair'),fimBox=document.getElementById('fim'),fimMsg=document.getElementById('fimmsg'),retry=document.getElementById('retry');let ver='';const nodes=new Map();let ended=false,iv=0;const ctl=new AbortController();
 // R2: encerramento pendente, gravado em DOIS lugares independentes: cookie zv_owner_chat_end (o servidor o respeita: não
 // entrega nada privado, responde 409, até um logout confirmado) e localStorage. Recarregar com qualquer um deles abre a
