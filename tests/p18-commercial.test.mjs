@@ -11,7 +11,7 @@ import {
   loadAllowlist, validateAllowlist, extractPurchaseLinks, checkLinkShape, readSalesMode, classifyCheckout, decideCheckout,
   decideSiteRoute, safeGet, safeInit, assertSafeInit, runOffline, runLive, buildReport, workerCheckoutLinks, PASS, FAIL, MAX_REDIRECTS,
   loadDirectAuthorization, validateDirectAuthorization, cashPrices, directEntry, decideDirectCheckout,
-  decodeNuxtData, structuredOfferPrice, structuredFromSources, structuredDiag,
+  decodeNuxtData, structuredOfferPrice, structuredFromSources, structuredDiag, paymentDiag, paymentDiagLine, moneyDiag,
 } from "../scripts/b0/p18-commercial.mjs";
 
 const FX = (n) => readTextNormalized(new URL("./fixtures/p18-commercial/" + n, import.meta.url));
@@ -549,4 +549,33 @@ test("P18C.D9: com o navegador, um GET simples do mesmo link também fornece o d
   const dv = await runLive({ allow, direct, fetchImpl: g, renderCheckout: both });
   assert.deepEqual(dv.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [["ia-na-pratica", "authorized_direct_price_divergent:sources:97,00|87,00"]], "[P18C.D9] GET simples divergente reprova");
   assert.deepEqual(structuredDiag([["x", undefined]], direct.products[0]), [{ src: "x", bytes: 0, nuxt_scripts: 0, state: "absent" }], "[P18C.D9] fonte vazia");
+});
+
+test("P18C.D10: diagnóstico de pagamento por fonte — só produto, oferta, tipo, parcelas, moeda e valor; ausente × irreconhecível × divergente; veredito inalterado", async () => {
+  const IAE = direct.products.find((x) => x.slug === "ia-na-pratica");
+  const br = paymentDiag(nuxtScript(nuxtProduct("ia-na-pratica")), IAE);
+  assert.equal(br.verdict, "cash_price_ok:97,00", "[P18C.D10] forma brasileira lida");
+  assert.deepEqual(br.products.map((p) => [p.product_id, p.offer, p.match]), [["8704733", "g9knd34r", true]], "[P18C.D10] produto e oferta");
+  assert.deepEqual(br.products[0].methods.map((m) => [m.type, m.offer, m.installments, m.amount, m.installment_1?.full_amount]),
+    [["CREDIT_CARD", "same", [1, 2], { currency: "BRL", value: 97 }, { currency: "BRL", value: 97 }], ["PIX", "same", "absent", { currency: "BRL", value: 97 }, undefined]], "[P18C.D10] tipos, parcelas, moeda e valor");
+  // Forma sem parcela 1 e sem PIX (hipótese do runner fora do Brasil): ausente, com o dinheiro que existe registrado.
+  const noCash = nuxtProduct("ia-na-pratica", { currency: "USD" }); noCash.offer.paymentMethods = [{ type: "CREDIT_CARD", offer: "g9knd34r", amount: { currency: "USD", value: 18.5 } }];
+  const us = paymentDiag(nuxtScript(noCash), IAE);
+  assert.equal(us.verdict, "cash_price_absent:no_cash_quote", "[P18C.D10] preço à vista ausente");
+  assert.deepEqual([us.products[0].methods[0].installments, us.products[0].methods[0].installment_1, us.products[0].methods[0].amount], ["absent", "absent", { currency: "USD", value: 18.5 }], "[P18C.D10] campo ausente × dinheiro presente");
+  assert.ok(us.products[0].money.some((x) => x.path === "product.offer.paymentMethods[0].amount" && x.currency === "USD"), "[P18C.D10] caminho do dinheiro");
+  const bad = nuxtProduct("ia-na-pratica"); bad.offer.paymentMethods[1].amount = { currency: "BRL", value: "97,00" };
+  assert.equal(paymentDiag(nuxtScript(bad), IAE).verdict, "cash_price_unrecognized:value_shape", "[P18C.D10] formato não reconhecido");
+  assert.equal(paymentDiag(nuxtScript(nuxtProduct("ia-na-pratica", { pix: "87,00" })), IAE).verdict, "cash_price_divergent:87,00|97,00", "[P18C.D10] preço divergente");
+  assert.deepEqual([moneyDiag(undefined), moneyDiag({ value: 1 }), moneyDiag({ currency: "BRL", value: NaN })], ["absent", "unrecognized:currency", "unrecognized:value"], "[P18C.D10] classificação do dinheiro");
+  // Linha de log: sem HTML, sem texto livre do produto (descrição), sem cookie.
+  const line = paymentDiagLine("ia-na-pratica", "plain_get", br);
+  assert.ok(line.startsWith("P18_PAYMENT ia-na-pratica src=plain_get nuxt=1 verdict=cash_price_ok:97,00"), "[P18C.D10] cabeçalho da linha");
+  assert.ok(!/[<>]|cookie|IA na Pr/i.test(line), "[P18C.D10] nada de HTML, cookie ou texto do produto: " + line);
+  // Veredito ao vivo inalterado; diagnóstico só acompanha.
+  const r = await runLive({ allow, direct, fetchImpl: liveFake(), renderCheckout: async (u) => { const s = slugOfUrl(u);
+    return s === CP.slug ? { status: 200, body: closedOf(s) } : { status: 200, body: productFixture(s, "hotmart-open-ok.html"), ssr: "", ssr_raw: s === "ia-na-pratica" ? nuxtScript(noCash) : nuxtScript(nuxtProduct(s)) }; } });
+  const ia = r.results.find((x) => x.slug === "ia-na-pratica" && x.source === "live:checkout");
+  assert.equal(ia.reason, "authorized_direct_price_unverified", "[P18C.D10] veredito segue a regra (pendente)");
+  assert.deepEqual(ia.payment_diag.map((d) => [d.src, d.verdict]), [["ssr_raw", "cash_price_absent:no_cash_quote"], ["body", undefined], ["plain_get", undefined]], "[P18C.D10] diagnóstico por fonte presente");
 });

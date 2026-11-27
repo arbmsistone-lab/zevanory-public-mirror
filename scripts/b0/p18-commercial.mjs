@@ -204,6 +204,79 @@ export function structuredFromSources(sources, entry) {
   if (vals.length > 1) return { state: "divergent", detail: "sources:" + vals.join("|"), values: vals };
   return rs[0];
 }
+// Diagnóstico de PAGAMENTO por fonte (somente leitura, não muda o veredito): para cada produto com oferta no
+// __NUXT_DATA__, registra SÓ produto, oferta, tipo de pagamento, números de parcela, moeda e valor — nunca HTML,
+// cookie, texto livre ou dado de comprador (o checkout é anônimo). Cada campo é classificado:
+//   "absent"        = campo não existe;   "unrecognized:<motivo>" = existe com formato que o leitor não aceita;
+//   {currency,value} = dinheiro reconhecido. O resumo diz se o preço à vista está ausente, irreconhecível ou divergente.
+const MAX_DIAG_METHODS = 12, MAX_DIAG_INSTALLMENTS = 24, MAX_DIAG_MONEY = 24;
+const keyName = (k) => (/^[A-Za-z_][A-Za-z0-9_]{0,40}$/.test(k) ? k : "?");
+export function moneyDiag(m) {
+  if (m === undefined || m === null) return "absent";
+  if (!isObj(m)) return "unrecognized:not_object";
+  const cur = m.currency, v = m.value;
+  if (cur === undefined && v === undefined) return "unrecognized:no_currency_no_value";
+  if (typeof cur !== "string" || !/^[A-Z]{3}$/.test(cur)) return "unrecognized:currency";
+  if (typeof v !== "number" || !Number.isFinite(v)) return "unrecognized:value";
+  return { currency: cur, value: v };
+}
+// Todo objeto {currency, value} sob o produto, com o CAMINHO por nomes de campo (onde o preço realmente está).
+function moneyPaths(root, max = MAX_DIAG_MONEY) {
+  const out = [], seen = new Set();
+  const walk = (o, path, d) => {
+    if (out.length >= max || d > 12 || o === null || typeof o !== "object" || seen.has(o)) return; seen.add(o);
+    if (isObj(o) && "currency" in o && "value" in o) { const m = moneyDiag(o); out.push({ path, ...(typeof m === "string" ? { money: m } : m) }); return; }
+    if (Array.isArray(o)) o.forEach((x, i) => walk(x, path + "[" + i + "]", d + 1));
+    else for (const k of Object.keys(o)) walk(o[k], path + "." + keyName(k), d + 1);
+  };
+  walk(root, "product", 0);
+  return out;
+}
+export function paymentDiag(html, entry) {
+  const scripts = [...String(html || "").matchAll(NUXT_SCRIPT)];
+  if (scripts.length !== 1) return { nuxt_scripts: scripts.length, products: [] };
+  let root;
+  try { root = decodeNuxtData(scripts[0][1].trim()); } catch (e) { return { nuxt_scripts: 1, format: "unrecognized:" + String(e.message || e).slice(0, 40), products: [] }; }
+  const products = [], seen = new Set(), sig = new Set();
+  const walk = (o) => {
+    if (o === null || typeof o !== "object" || seen.has(o)) return; seen.add(o);
+    if (isObj(o) && isObj(o.offer) && (typeof o.id === "number" || typeof o.id === "string")) {
+      const off = o.offer, pms = off.paymentMethods;
+      const methods = pms === undefined ? "absent" : !Array.isArray(pms) ? "unrecognized:not_array" : pms.slice(0, MAX_DIAG_METHODS).map((pm) => {
+        if (!isObj(pm)) return { method: "unrecognized:not_object" };
+        const inst = pm.installments === undefined ? "absent" : !Array.isArray(pm.installments) ? "unrecognized:not_array"
+          : pm.installments.slice(0, MAX_DIAG_INSTALLMENTS).map((x) => (isObj(x) && Number.isInteger(x.number) ? x.number : isObj(x) && x.number !== undefined ? "unrecognized:" + typeof x.number : "absent"));
+        const one = Array.isArray(pm.installments) ? pm.installments.filter((x) => isObj(x) && x.number === 1) : [];
+        return {
+          type: typeof pm.type === "string" ? pm.type.slice(0, 24) : pm.type === undefined ? "absent" : "unrecognized",
+          offer: pm.offer === undefined ? "absent" : pm.offer === entry.offer ? "same" : typeof pm.offer === "string" ? "other" : "unrecognized",
+          installments: inst,
+          amount: moneyDiag(pm.amount),
+          installment_1: one.length === 0 ? "absent" : one.length > 1 ? "unrecognized:repeated" : { amount: moneyDiag(one[0].amount), full_amount: moneyDiag(one[0].fullAmount) },
+          keys: Object.keys(pm).map(keyName).slice(0, 20),
+        };
+      });
+      const d = { product_id: String(o.id), offer: typeof off.key === "string" ? off.key : off.key === undefined ? "absent" : "unrecognized",
+        match: String(o.id) === entry.hotmart_product_id && off.key === entry.offer, offer_keys: Object.keys(off).map(keyName).slice(0, 20), methods, money: moneyPaths(o) };
+      const k = JSON.stringify(d);
+      if (!sig.has(k)) { sig.add(k); products.push(d); }
+    }
+    for (const k of Object.keys(o)) walk(o[k]);
+  };
+  walk(root);
+  const st = structuredOfferPrice(html, entry);
+  return { nuxt_scripts: 1, products, verdict: st.state === "absent" ? "cash_price_absent" + (st.detail ? ":" + st.detail : "") : st.state === "invalid" ? "cash_price_unrecognized:" + st.detail
+    : st.state === "divergent" ? "cash_price_divergent:" + st.detail : st.state === "ok" ? "cash_price_ok:" + st.value_brl : st.state + (st.detail ? ":" + st.detail : "") };
+}
+// Uma linha por kit e fonte, só com os campos permitidos.
+export function paymentDiagLine(slug, src, d) {
+  const fmt = (m) => (typeof m === "string" ? m : m && "currency" in m ? m.currency + ":" + m.value : JSON.stringify(m));
+  const head = `P18_PAYMENT ${slug} src=${src} nuxt=${d.nuxt_scripts}${d.format ? " format=" + d.format : ""}${d.verdict ? " verdict=" + d.verdict : ""}`;
+  const prods = (d.products || []).map((p) => `product=${p.product_id} offer=${p.offer} match=${p.match} offer_keys=${p.offer_keys.join(",")} methods=` +
+    (typeof p.methods === "string" ? p.methods : p.methods.map((m) => m.method ? m.method : `{type=${m.type} offer=${m.offer} inst=${typeof m.installments === "string" ? m.installments : "[" + m.installments.join(",") + "]"} amount=${fmt(m.amount)} inst1=${typeof m.installment_1 === "string" ? m.installment_1 : fmt(m.installment_1.amount) + "/" + fmt(m.installment_1.full_amount)} keys=${m.keys.join(",")}}`).join(";")) +
+    ` money=${p.money.map((x) => x.path + "=" + (x.money || x.currency + ":" + x.value)).join(";") || "none"}`);
+  return [head, ...prods.map((x) => "  " + x)].join("\n");
+}
 // Diagnóstico por fonte (sem conteúdo): tamanho, quantos blocos __NUXT_DATA__ e o que a leitura achou.
 export function structuredDiag(srcs, entry) {
   return srcs.map(([src, h]) => {
@@ -561,7 +634,7 @@ export async function runLive({ allow, direct = null, fetchImpl = fetch, renderC
     const st = de ? structuredFromSources(srcs.map((x) => x[1]), de) : null;
     const d = de ? decideDirectCheckout(cls, priceText, de, st) : decideCheckout(em, cls);
     results.push({ link: href, source: "live:checkout", slug: p.slug, verdict: d.verdict, reason: sm.mode ? d.reason : sm.reason,
-      ...(de ? { authorized_direct: true, price_expected: de.price_cash_brl, prices_seen: cashPrices(priceText), structured: st, structured_sources: structuredDiag(srcs, de), ...(plain ? { plain_get_status: plain.status } : {}) } : {}),
+      ...(de ? { authorized_direct: true, price_expected: de.price_cash_brl, prices_seen: cashPrices(priceText), structured: st, structured_sources: structuredDiag(srcs, de), payment_diag: srcs.filter((x) => typeof x[1] === "string" && x[1].length).map(([src, h]) => ({ src, ...paymentDiag(h, de) })), ...(plain ? { plain_get_status: plain.status } : {}) } : {}),
       http_status: got.status, hops: got.hops || [], state: cls.state, identity: cls.identity, ...(got.blocked_non_get !== undefined ? { blocked_non_get: got.blocked_non_get } : {}) });
   }
   return buildReport("live", results, { started_at: started, finished_at: new Date(now()).toISOString(), sales_mode: sm.mode, sales_mode_reason: sm.reason, hotmart_channel: hc.open, hotmart_channel_reason: hc.reason,
@@ -584,6 +657,7 @@ async function main(argv) {
   const json = JSON.stringify(report, null, 2) + "\n";
   if (out) writeFileSync(out, json);
   for (const r of report.results) console.log(`${r.verdict} ${r.source} ${r.slug ?? "-"} ${r.reason}${r.link ? " " + r.link : ""}`);
+  for (const r of report.results) for (const d of r.payment_diag || []) console.log(paymentDiagLine(r.slug, d.src, d));
   for (const r of report.results) if (r.structured_sources) console.log(`P18_STRUCTURED ${r.slug} state=${r.structured?.state}${r.structured?.detail ? " detail=" + r.structured.detail : ""} ` +
     r.structured_sources.map((x) => `${x.src}=${x.bytes}b/nuxt${x.nuxt_scripts}/${x.state}${x.detail ? ":" + x.detail : ""}${x.value_brl ? ":" + x.value_brl : ""}`).join(" ") + (r.plain_get_status !== undefined ? ` plain_get_http=${r.plain_get_status}` : ""));
   console.log(`P18_COMMERCIAL mode=${report.mode} verdict=${report.verdict} total=${report.counts.total} pass=${report.counts.pass} fail=${report.counts.fail}${report.sales_mode !== undefined ? " sales_mode=" + report.sales_mode : ""}${report.hotmart_channel !== undefined ? " hotmart_channel=" + report.hotmart_channel : ""}`);

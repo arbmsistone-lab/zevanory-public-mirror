@@ -81,8 +81,10 @@ jobs:
         run: test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"
 
   live:
-    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/gh-pages' }}
-    name: p18-commercial / live (somente GET)
+    # gh-pages (agendado ou manual) DECIDE o P18. Disparo manual em outra ref = diagnóstico isolado no mesmo runner,
+    # mesma leitura, somente GET, que NUNCA decide (sai 0 e o nome do job diz isso).
+    if: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/gh-pages' || github.event_name == 'workflow_dispatch') }}
+    name: ${{ github.ref == 'refs/heads/gh-pages' && 'p18-commercial / live (somente GET)' || 'p18-commercial / diagnóstico isolado (somente GET, não decide)' }}
     runs-on: ubuntu-24.04  # fixado 22/11/2026: ubuntu-latest = 26.04 quebra Playwright/Chromium e semgrep (py3.14)
     timeout-minutes: 12
     steps:
@@ -101,12 +103,13 @@ jobs:
       - name: Verificação comercial live
         shell: bash
         run: |
-          set -uo pipefail
+          set +e -uo pipefail  # o shell do runner usa -e; o código de saída vem do node, lido abaixo
           node scripts/b0/p18-commercial.mjs --mode live --browser --out "$RUNNER_TEMP/p18-commercial.json" | tee "$RUNNER_TEMP/live.txt"
           code=${PIPESTATUS[0]}
           echo "::notice title=P18_COMMERCIAL::$(grep -E '^P18_COMMERCIAL ' "$RUNNER_TEMP/live.txt")"
           # Zero FAIL lines is the green case: grep exits 1 then, which must not fail the step (exit code comes from node).
           { grep -E '^FAIL ' "$RUNNER_TEMP/live.txt" || true; } | head -20 | while read -r l; do echo "::error title=P18_COMMERCIAL_FAIL::$l"; done
+          if [ "$GITHUB_REF" != "refs/heads/gh-pages" ]; then echo "::notice title=P18_DIAGNOSTICO::execução isolada fora do gh-pages; veredito $code não vale como P18"; exit 0; fi
           exit "$code"
       - name: Relatório
         if: ${{ always() }}

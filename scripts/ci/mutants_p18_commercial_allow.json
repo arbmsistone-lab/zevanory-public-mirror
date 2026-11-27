@@ -432,6 +432,11 @@
           "test_pattern": "P18C.D6: modo offline confere o preço",
           "assertion_pattern": "[P18C.D6] texto visível sozinho não prova a oferta",
           "justification": "mesma regra na decisão unitária"
+        },
+        {
+          "test_pattern": "P18C.D10: diagnóstico de pagamento por fonte",
+          "assertion_pattern": "[P18C.D10] veredito segue a regra (pendente)",
+          "justification": "o diagnóstico ao vivo usa a mesma decisão: sem a regra, ausente vira authorized_direct_price_invalid"
         }
       ]
     },
@@ -553,6 +558,11 @@
           "test_pattern": "P18C.D9: com o navegador, um GET simples",
           "assertion_pattern": "[P18C.D9] GET simples divergente reprova",
           "justification": "sem o HTML bruto (97,00) só resta o GET simples (87,00): o motivo vira mismatch, não divergência entre fontes"
+        },
+        {
+          "test_pattern": "P18C.D10: diagnóstico de pagamento por fonte",
+          "assertion_pattern": "[P18C.D10] diagnóstico por fonte presente",
+          "justification": "sem o HTML bruto a fonte ssr_raw some do diagnóstico e o veredito muda"
         }
       ]
     },
@@ -634,6 +644,11 @@
           "test_pattern": "P18C.D8: o preço pertence à oferta certa",
           "assertion_pattern": "[P18C.D8] ao vivo: divergente",
           "justification": "mesma regra ao vivo"
+        },
+        {
+          "test_pattern": "P18C.D10: diagnóstico de pagamento por fonte",
+          "assertion_pattern": "[P18C.D10] preço divergente",
+          "justification": "o resumo do diagnóstico reusa a mesma leitura"
         }
       ]
     },
@@ -707,6 +722,11 @@
           "test_pattern": "P18C.D9: com o navegador, um GET simples",
           "assertion_pattern": "[P18C.D9] GET simples supre o dado estruturado",
           "justification": "parcela 2 vira valor à vista divergente também no GET simples"
+        },
+        {
+          "test_pattern": "P18C.D10: diagnóstico de pagamento por fonte",
+          "assertion_pattern": "[P18C.D10] forma brasileira lida",
+          "justification": "o resumo do diagnóstico reusa a mesma leitura (parcela 2 vira valor divergente)"
         }
       ],
       "broad_reason": "a leitura do preço à vista é comum a todo cenário com kit aberto (D3, D4, D7, D8, D9): contar a parcela 2 quebra todos eles"
@@ -718,7 +738,13 @@
           "assertion_pattern": "[P18C.D9] GET simples supre o dado estruturado"
         }
       ],
-      "secondary": []
+      "secondary": [
+        {
+          "test_pattern": "P18C.D10: diagnóstico de pagamento por fonte",
+          "assertion_pattern": "[P18C.D10] diagnóstico por fonte presente",
+          "justification": "sem o GET simples a fonte plain_get some do diagnóstico"
+        }
+      ]
     }
   }
 }
