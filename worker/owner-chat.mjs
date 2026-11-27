@@ -20,8 +20,9 @@
 //   seq visível implica todas as menores visíveis: o cursor "seq > after" nunca pula commit atrasado. O servidor
 //   devolve o cursor (última seq da página); sem sobreposição que faça o cliente saltar. Marcador KV é só dica.
 // * Sentinela proativa (cron 5,35, depois do motor): canal esperado sem publicação depois do horário vira
-//   "CANAL PARADO" com o motivo (pausado, sem credencial, erro); venda aprovada nova vira aviso.
+//   "Canal parado" com o motivo (pausado, sem credencial, erro); venda aprovada nova vira aviso.
 import { OWNER_PIN_PATHS, handlePinLogin, handlePinLogout, sessionHash, logoutPending, pinConfigured, PIN_PAGE, PIN_PAGE_HEADERS } from "./owner-pin.mjs";
+import { PANEL_SESSION_PATH, handlePanelSession } from "./owner-panel-bridge.mjs";
 import { SESSION_AUTHORITY, SESSION_VALID_SQL, ensureSessionSchema, checkSession, purgeLegacyKvSessions, sessionRetention } from "./owner-session.mjs";
 import { acquisitionSnapshot, OWNER_DISABLED_CHANNELS } from "./acquisition-engine.mjs";
 import { SALES_SUMMARY_KEY } from "./sales-ledger.mjs";
@@ -41,8 +42,8 @@ export const EXPECTED_HOUR = Object.freeze({ blog: 9, bluesky: 19 });
 const TOLERANCE_H = 1;
 const AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8-fast";
 export const ACTIONS = Object.freeze({
-  pausar_criativos: { label: "Pausar a autopublicação (blog e Bluesky)", value: "1", done: "Autopublicação PAUSADA. Nada novo será publicado até você retomar." },
-  retomar_criativos: { label: "Retomar a autopublicação", value: "0", done: "Autopublicação RETOMADA. Os canais voltam a publicar no próximo horário." },
+  pausar_criativos: { label: "Pausar a autopublicação (blog e Bluesky)", value: "1", done: "Publicação automática pausada. Nada novo sai até você pedir para retomar." },
+  retomar_criativos: { label: "Retomar a autopublicação", value: "0", done: "Publicação automática retomada. Os canais voltam a publicar no próximo horário." },
 });
 export const INTENTS = Object.freeze(["status", "vendas", "problemas", "pausar", "retomar", "ajuda"]);
 
@@ -142,29 +143,29 @@ export function findStoppedChannels(facts) {
     // A agenda é a do próprio motor (NC-G6-1030-10): dia sem publicação prevista chega como "fora_da_agenda".
     if (["publicado", "fora_da_agenda", "desligado"].includes(row?.status)) continue;
     const reason = facts.pause === "pausada" ? "pausado" : row?.status === "aguardando credencial" ? "sem_credencial" : !row ? "sem_registro" : safeCode(row.error) || safeStatus(row.status);
-    const why = reason === "pausado" ? "A autopublicação está PAUSADA" : reason === "sem_credencial" ? "A credencial do canal está ausente" : reason === "sem_registro" || reason === "sem dados" ? "O motor não registrou nenhuma execução hoje" : `Motivo: ${reason}`;
-    out.push({ channel, reason, text: `${channel}: não publicou hoje (esperado às ${h}h). ${why}.` });
+    const why = reason === "pausado" ? "A publicação automática está pausada" : reason === "sem_credencial" ? "O acesso a esse canal caiu e precisa ser refeito" : reason === "sem_registro" || reason === "sem dados" ? "O robô de publicação não rodou para esse canal hoje" : `Motivo: ${reason}`;
+    out.push({ channel, reason, text: `${channel} não publicou hoje (o horário previsto era ${h}h). ${why}.` });
   }
   return out;
 }
 function statusText(facts) {
-  if (!facts.snap) return "Não consegui ler o estado de publicação agora. Tente de novo em alguns minutos.";
+  if (!facts.snap) return "Não consegui ver as publicações de hoje agora. Tente de novo em alguns minutos.";
   const lines = facts.snap.today.filter((r) => obj(r) && r.channel !== "whatsapp").filter((r) => Object.hasOwn(EXPECTED_HOUR, r.channel) || r.channel === "telegram").map((r) => { const link = safeLink(r.link), code = safeCode(r.error); return `• ${r.channel}: ${safeStatus(r.status)}${link ? " — " + link : ""}${code && r.status !== "publicado" ? ` (${code})` : ""}`; });
-  return [`Hoje (${facts.day}), publicações:`, ...lines, `Autopublicação: ${facts.pause}.`].join("\n");
+  return [`Publicações de hoje (${facts.day}):`, ...lines, `Publicação automática: ${facts.pause}.`].join("\n");
 }
 function salesText(facts) {
-  if (!facts.sales.ok) return "O registro de vendas está ilegível agora; não vou chutar um número.";
+  if (!facts.sales.ok) return "Não consegui ler o registro de vendas agora. Prefiro não chutar um número; tente de novo em alguns minutos.";
   const s = facts.sales.value;
-  if (!s) return "Ainda não há nenhuma venda registrada pelo postback da Hotmart.";
+  if (!s) return "Ainda não entrou nenhuma venda pela Hotmart. Quando entrar, eu aviso aqui na hora.";
   const today = s.byDay?.[facts.day];
-  return [`Vendas aprovadas no total: ${s.totals.approved} (${brl(s.totals.grossCents)} bruto).`, today ? `Hoje: ${today.approved} (${brl(today.grossCents)}).` : "Hoje: nenhuma até agora.", s.totals.refunded ? `Reembolsos: ${s.totals.refunded}.` : ""].filter(Boolean).join("\n");
+  return [`Vendas aprovadas até agora: ${s.totals.approved}, somando ${brl(s.totals.grossCents)} antes das taxas.`, today ? `Hoje: ${today.approved} (${brl(today.grossCents)}).` : "Hoje: nenhuma até agora.", s.totals.refunded ? `Reembolsos: ${s.totals.refunded}.` : ""].filter(Boolean).join("\n");
 }
 function problemsText(facts) {
   const failing = [...findStoppedChannels(facts).map((s) => s.text), ...(facts.vigia || []).filter((o) => o.health === "falha").map((o) => o.text.split("\n")[0] + (o.fix ? " → " + o.fix : ""))];
-  return failing.length ? ["Problemas abertos agora:", ...failing.map((t) => "• " + t)].join("\n") : "Nenhum problema observado agora: canais, ciclo automático, pós-venda e workflows sem falha registrada. O que não tenho como observar não conto como saudável.";
+  return failing.length ? ["O que está com problema agora:", ...failing.map((t) => "• " + t)].join("\n") : "Está tudo funcionando no que eu acompanho: canais de publicação, tarefas automáticas, e-mails de pós-venda e verificações do código. O que eu não consigo ver, não conto como funcionando.";
 }
-const HELP = "Sou o Epaminondas, o vigia da ZEVANORY e a ponte direta com você. Posso responder: \"status\" (o que publicou hoje), \"vendas\", \"o que está parado\", \"pausar\" ou \"retomar\" a autopublicação. Também te aviso sozinho quando algo parar, falhar ou entrar uma venda, digo o que já corrigi e só aviso RESOLVIDO com prova de que voltou ao normal.";
-const UNKNOWN = "Ainda não sei responder isso com dados confiáveis, então não vou inventar. " + HELP;
+const HELP = "Sou o Epaminondas, quem cuida da ZEVANORY com você. Pode me perguntar: \"status\" (o que foi publicado hoje), \"vendas\", \"o que está parado\", ou pedir para \"pausar\" ou \"retomar\" a publicação automática. Também aviso sozinho quando algo parar, falhar ou entrar uma venda. Só digo que resolveu quando vejo que voltou ao normal.";
+const UNKNOWN = "Ainda não sei responder isso com dados seguros, então não vou inventar. " + HELP;
 
 export function intentOf(text) {
   const t = text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -208,7 +209,7 @@ export async function answer(env, sql, text, facts) {
   if (intent === "ajuda") return { text: HELP };
   if (intent === "pausar" || intent === "retomar") {
     const type = intent === "pausar" ? "pausar_criativos" : "retomar_criativos";
-    return { text: `Confirma? ${ACTIONS[type].label}. Toque no botão em até 10 minutos.`, action: type, kind: "acao" };
+    return { text: `Quer mesmo? ${ACTIONS[type].label}. Toque em Confirmar em até 10 minutos.`, action: type, kind: "acao" };
   }
   return { text: UNKNOWN };
 }
@@ -227,7 +228,7 @@ export function observeChannels(facts, now) {
   }
   for (const s of findStoppedChannels(facts)) {
     if (s.channel === "motor") continue;
-    out.push({ key: "canal:" + s.channel, health: "falha", at: now.getTime(), text: "CANAL PARADO — " + s.text + (s.reason === "pausado" ? " Diga \"retomar\" para religar." : ""), fix: s.reason === "pausado" ? "Nível 2: um toque seu (retomar)." : s.reason === "sem_credencial" ? "Nível 2: refazer o login da plataforma." : "Nível 1: o motor tenta de novo no próximo horário; se repetir, nível 3." });
+    out.push({ key: "canal:" + s.channel, health: "falha", at: now.getTime(), text: "Canal parado: " + s.text + (s.reason === "pausado" ? " Diga \"retomar\" para religar." : ""), fix: s.reason === "pausado" ? "Precisa de você: diga \"retomar\" aqui no chat." : s.reason === "sem_credencial" ? "Precisa de você: entrar de novo na conta desse canal." : "Você não precisa fazer nada. O robô tenta de novo no próximo horário; se falhar de novo, eu corrijo." });
   }
   return out;
 }
@@ -300,7 +301,7 @@ export async function reconcileActions(sql, kv) {
     ok = current === def.value || (def.value === "0" && current === null);
     await settleAction(sql, id, ok ? "executado" : "nao_aplicado");
   }
-  await insertMessage(sql, { from: "zevanory", kind: "sistema", dedupe: "conferido:" + id, text: ok ? "✅ Conferi: a ordem foi aplicada. " + def.done : "Conferi: a ordem NÃO foi aplicada. Nada mudou. Pode pedir de novo." });
+  await insertMessage(sql, { from: "zevanory", kind: "sistema", dedupe: "conferido:" + id, text: ok ? "✅ Feito e conferido. " + def.done : "Conferi e o pedido não foi aplicado. Nada mudou. Pode pedir de novo." });
   await sql.query(`/*owner-chat:unlock*/ update zevanory_owner_chat_action_lock set holder = null, since = null where k = 1 and holder = $1::bigint`, [id]);
   await bumpVersion(kv);
   return { reconciled: 1 };
@@ -341,9 +342,12 @@ export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sq
       return new Response(PIN_PAGE, { status: 200, headers: PIN_PAGE_HEADERS });
     }
     if (request.method === "POST" && url.pathname === OWNER_PIN_PATHS.logout) return json({ error: "owner_chat_maintenance" }, 503);
+    if (url.pathname === PANEL_SESSION_PATH) return json({ error: "owner_chat_maintenance" }, 503);
     return json({ error: "auth_required" }, 401);
   }
   // Login/saída por PIN (owner-pin.mjs): rotas próprias, com CSRF e limite de tentativas; não exigem sessão.
+  // Sessão do chat a partir do passe do painel (owner-panel-bridge.mjs): sem PIN separado na tela.
+  if (url.pathname === PANEL_SESSION_PATH) return handlePanelSession(request, env, { sql: await sqlOrNull(), authority: sessionAuthority, kv: env.ZEVANORY_PRIVATE_ARTIFACTS });
   if (url.pathname === OWNER_PIN_PATHS.login) return handlePinLogin(request, env, { sql: await sqlOrNull(), authority: sessionAuthority });
   if (url.pathname === OWNER_PIN_PATHS.logout) return handlePinLogout(request, env, { sql: await sqlOrNull() });
   const basicOk = typeof isAdminAuthorized === "function" && isAdminAuthorized(request, env);
@@ -478,10 +482,13 @@ header{padding:12px 16px;background:var(--card);font-weight:700;display:flex;jus
 button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:#2563eb;color:#fff;cursor:pointer}button:disabled{opacity:.5}
 #fim{padding:16px;display:grid;gap:10px;justify-items:start}#fim[hidden],#log[hidden],form[hidden]{display:none}
 .sair{margin-left:10px;padding:6px 10px;font-size:14px;background:transparent;border:1px solid #334155}
-form{display:flex;gap:8px;padding:12px 16px;background:var(--card)}input{flex:1;font:inherit;padding:12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:var(--tx)}
-</style></head><body><header>Epaminondas · ZEVANORY <span><small id="st">conectando…</small><button id="sair" type="button" class="sair">Sair</button></span></header><main id="log" aria-live="polite"></main>
+form{display:flex;gap:8px;padding:12px 16px;background:var(--card)}input{flex:1;min-width:0;font:inherit;padding:12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:var(--tx)}
+.m{overflow-wrap:anywhere}button{flex:0 0 auto}
+html[data-theme=light]{--bg:#f8fafc;--card:#ffffff;--me:#2563eb;--zv:#e2e8f0;--tx:#0f172a;--mu:#475569}html[data-theme=light] .owner{color:#fff}html[data-theme=light] input{background:#fff;border-color:#cbd5e1}html[data-theme=light] .sair{border-color:#cbd5e1;color:var(--tx)}
+header small{white-space:nowrap}@media (max-width:360px){body{font-size:14px}header{padding:8px 10px;font-size:14px}header .sub{display:none}#log{padding:8px;gap:8px}.m{max-width:100%;padding:8px 10px}form{padding:8px;gap:6px}input{padding:8px}button{padding:8px 10px}.t{font-size:11px}}
+</style></head><body><header><span class="tt">Epaminondas<span class="sub"> · ZEVANORY</span></span><span><small id="st">conectando…</small><button id="sair" type="button" class="sair">Sair</button></span></header><main id="log" aria-live="polite"></main>
 <div id="fim" role="status" hidden><p id="fimmsg"></p><button id="retry" type="button" hidden>Tentar encerrar de novo</button></div>
-<form id="f"><input id="q" autocomplete="off" maxlength="1500" placeholder="Fale com o Epaminondas (ex.: status, vendas, o que está parado)"><button id="b">Enviar</button></form>
+<form id="f"><input id="q" autocomplete="off" maxlength="1500" placeholder="Escreva aqui (ex.: status, vendas)"><button id="b">Enviar</button></form>
 <script>(()=>{const log=document.getElementById('log'),st=document.getElementById('st'),q=document.getElementById('q'),b=document.getElementById('b'),f=document.getElementById('f'),sairB=document.getElementById('sair'),fimBox=document.getElementById('fim'),fimMsg=document.getElementById('fimmsg'),retry=document.getElementById('retry');let ver='';const nodes=new Map();let ended=false,iv=0;const ctl=new AbortController();
 // R2: encerramento pendente, gravado em DOIS lugares independentes: cookie zv_owner_chat_end (o servidor o respeita: não
 // entrega nada privado, responde 409, até um logout confirmado) e localStorage. Recarregar com qualquer um deles abre a
@@ -510,6 +517,7 @@ f.onsubmit=async e=>{e.preventDefault();const text=q.value.trim();if(!text||ende
 // a conversa NÃO volta sozinha (a consulta periódica fica parada).
 async function sair(){const marked=endMark();encerrar();fimBox.hidden=false;retry.hidden=true;fimMsg.textContent='Encerrando a sessão…';let confirmed=false;let pa=null;
 try{const r=await fetch('/api/admin/owner-chat/logout',{method:'POST',headers:H,signal:AbortSignal.timeout(8000)});const j=await r.json().catch(()=>({}));confirmed=r.ok&&j.ok===true;pa=j.pending_actions;}catch{}
+try{if(window.parent!==window)window.parent.postMessage({type:'zv-owner-chat:logged-out',ok:confirmed},'${PANEL_ORIGIN}');}catch{}
 if(confirmed){endClear();if(pa>0){fimMsg.textContent='Sessão encerrada. '+(pa===1?'1 ação autorizada antes do encerramento ainda está sendo concluída':pa+' ações autorizadas antes do encerramento ainda estão sendo concluídas')+'; o resultado fica registrado no histórico.';const k=document.createElement('button');k.type='button';k.id='topin';k.textContent='Ir para o PIN';k.onclick=()=>location.replace('/admin/proprietario');fimBox.appendChild(k);return;}fimMsg.textContent='Sessão encerrada.';location.replace('/admin/proprietario');return;}
 fimMsg.textContent='Não foi possível confirmar o encerramento no servidor. A sessão pode continuar válida. Verifique a conexão e tente de novo.'+(marked?'':' Este navegador não permitiu guardar o pedido de saída: se a página for recarregada antes da confirmação, a conversa pode voltar a aparecer. Sem confirmação do servidor, a sessão só termina ao expirar (até 12 h).');retry.hidden=false;retry.focus();}
 sairB.onclick=sair;retry.onclick=sair;
@@ -517,4 +525,12 @@ sairB.onclick=sair;retry.onclick=sair;
 // consulta e conversa oculta. Reaberta: a sessão é validada por uma consulta ANTES de a conversa reaparecer (401 encerra,
 // 409 repete o logout); a consulta segue de onde parou e nunca corre em dobro.
 window.addEventListener('message',e=>{if(e.origin!=='${PANEL_ORIGIN}'||e.source!==window.parent||!e.data||e.data.type!=='zv-owner-chat:visibility')return;const open=e.data.open===true;if(open===shown||ended)return;shown=open;if(!open){clearInterval(iv);iv=0;log.hidden=true;st.textContent='pausado';return;}openGen++;poll();iv=setInterval(poll,5000);});
+// Painel (27/11): o chat fica sempre aberto na coluna do painel, sem PIN. O painel renova o passe a cada 2 min (troca
+// por uma sessão nova de até 5 min) e, ao sair do painel, manda encerrar: o logout revoga a sessão no servidor.
+// Só a origem do painel e a janela-mãe são aceitas. Dentro do painel o botão Sair do chat some (sair do painel encerra).
+// Renovações em fila única: um passe por vez, sempre com o cookie já atualizado pela troca anterior; se chegar outro
+// passe durante a troca, só o mais recente é usado depois (nunca duas trocas simultâneas com o mesmo cookie antigo).
+let renewing=false,nextTicket=null;async function renovar(t){if(ended)return;if(renewing){nextTicket=t;return;}renewing=true;try{const r=await fetch('/api/admin/owner-chat/panel-session',{method:'POST',headers:H,body:JSON.stringify(t),credentials:'same-origin',signal:ctl.signal});if(r.status===401&&!ended)st.textContent='sessão do painel acabou';}catch{}finally{renewing=false;if(nextTicket&&!ended){const n=nextTicket;nextTicket=null;renovar(n);}}}
+window.addEventListener('message',e=>{if(e.origin!=='${PANEL_ORIGIN}'||e.source!==window.parent||!e.data)return;if(e.data.type==='zv-owner-chat:ticket'&&e.data.ticket)renovar(e.data.ticket);else if(e.data.type==='zv-owner-chat:logout')sair();else if(e.data.type==='zv-owner-chat:theme')document.documentElement.dataset.theme=e.data.theme==='light'?'light':'dark';});
+if(window.parent!==window){sairB.hidden=true;window.parent.postMessage({type:'zv-owner-chat:ready'},'${PANEL_ORIGIN}');}
 if(endOn()){sair();}else{document.addEventListener('visibilitychange',poll);poll();iv=setInterval(poll,5000);}})();</script></body></html>`;

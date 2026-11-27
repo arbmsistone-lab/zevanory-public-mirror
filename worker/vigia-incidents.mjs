@@ -50,7 +50,7 @@ export async function runIncidents({ sql, kv, observations, insertMessage, now =
   await ensureVigiaSchema(sql);
   let opened = 0, resolved = 0, delivered = 0;
   for (const o of failing) {
-    const text = "⚠️ PROBLEMA — " + o.text + (o.fix ? "\nDiagnóstico e correção: " + o.fix : "");
+    const text = "⚠️ Problema: " + o.text + (o.fix ? "\n" + o.fix : "");
     const r = await sql.query(`/*vigia:open*/ insert into zevanory_vigia_state as s (problem_key, gen, aberto, opened_evidence_at, open_text)
       values ($1, 1, true, ${TS(2)}, $3)
       on conflict (problem_key) do update set gen = s.gen + 1, aberto = true, opened_at = now(), opened_evidence_at = excluded.opened_evidence_at,
@@ -74,8 +74,8 @@ export async function runIncidents({ sql, kv, observations, insertMessage, now =
       delivered++;
     }
     if (!i.aberto && !i.resolve_notified) {
-      const first = String(i.open_text).replace(/^⚠️ PROBLEMA — /, "").split("\n")[0];
-      await insertMessage(sql, { from: "zevanory", kind: "sistema", text: `✅ RESOLVIDO — ${first} (durou ${duration(Date.parse(i.resolved_evidence_at) - Date.parse(i.opened_evidence_at))}; confirmado por observação saudável posterior).`, dedupe: "vigia:resolver:" + tag });
+      const first = String(i.open_text).replace(/^⚠️ (?:PROBLEMA — |Problema: )/, "").split("\n")[0];
+      await insertMessage(sql, { from: "zevanory", kind: "sistema", text: `✅ Resolvido: ${first} Durou ${duration(Date.parse(i.resolved_evidence_at) - Date.parse(i.opened_evidence_at))}. Já voltou ao normal; você não precisa fazer nada.`, dedupe: "vigia:resolver:" + tag });
       await sql.query(`/*vigia:notified-resolve*/ update zevanory_vigia_state set resolve_notified = true where problem_key = $1 and gen = $2::integer and not aberto`, [i.problem_key, Number(i.gen)]);
       delivered++;
     }
@@ -89,5 +89,5 @@ export async function runIncidents({ sql, kv, observations, insertMessage, now =
 export async function openIncidentsText(sql) {
   await ensureVigiaSchema(sql);
   const rows = await sql.query(`/*vigia:open-list*/ select open_text, opened_at from zevanory_vigia_state where aberto order by opened_at limit 20`, []);
-  return rows.map((r) => "• " + String(r.open_text).replace(/^⚠️ PROBLEMA — /, "").split("\n")[0]);
+  return rows.map((r) => "• " + String(r.open_text).replace(/^⚠️ (?:PROBLEMA — |Problema: )/, "").split("\n")[0]);
 }

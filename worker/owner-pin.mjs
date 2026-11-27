@@ -1,4 +1,4 @@
-// ZEVANORY | Acesso do proprietário ao chat por PIN de 6 dígitos (pedido do proprietário, 26/11/2026).
+// ZEVANORY | Acesso do proprietário ao chat por PIN de 6 dígitos (26/11/2026); desde 27/11 a tela não pede PIN: a sessão vem do painel (owner-panel-bridge.mjs).
 // Só para o chat do proprietário (/admin/proprietario e /api/admin/owner-chat/*). O Basic do console continua valendo.
 // * PIN: segredo do Worker `OWNER_CHAT_PIN` (exatamente 6 dígitos). Ausente ou fora do formato => PIN DESLIGADO
 //   (comportamento anterior: só Basic). O valor nunca é logado nem devolvido.
@@ -10,7 +10,7 @@
 // * CSRF: login/saída só por POST com Origin igual e cabeçalho x-owner-chat: 1.
 // * Encerramento pendente (R2): cookie `zv_owner_chat_end=1` gravado pela página ao clicar em Sair. Com ele, o servidor
 //   não entrega nada privado (409 logout_pending) até um logout confirmado; só o POST de logout (com CSRF) revoga.
-import { SESSION_AUTHORITY, SESSION_TTL_S, PIN_IP_MAX, PIN_IP_WINDOW_S, PIN_GLOBAL_MAX, checkSession, createSession, revokeSession, reserveAttempt, releaseAttempt } from "./owner-session.mjs";
+import { SESSION_AUTHORITY, SESSION_TTL_S, PIN_IP_MAX, PIN_IP_WINDOW_S, PIN_GLOBAL_MAX, checkSession, createSession, revokeSession, reserveAttempt, releaseAttempt, endPanelSession } from "./owner-session.mjs";
 export { PIN_IP_MAX, PIN_IP_WINDOW_S, PIN_GLOBAL_MAX };
 export const OWNER_PIN_PATHS = Object.freeze({ login: "/api/admin/owner-chat/pin", logout: "/api/admin/owner-chat/logout" });
 export const PIN_COOKIE = "zv_owner_chat";
@@ -48,6 +48,8 @@ const json = (data, status = 200, cookies = []) => {
 };
 const CLEAR_SESSION = `${PIN_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`;
 const CLEAR_END = `${END_COOKIE}=; Path=/; Max-Age=0; Secure; SameSite=Strict`;
+const PANEL_SID_COOKIE_NAME = "zv_owner_chat_sid";
+const CLEAR_SID = `${PANEL_SID_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`;
 
 // Hash do token do cookie (formato estrito) ou null.
 export async function sessionHash(request) {
@@ -106,12 +108,18 @@ export async function handlePinLogout(request, env = {}, { sql } = {}) {
   if (request.method !== "POST") return new Response(null, { status: 405 });
   if (request.headers.get("origin") !== url.origin || request.headers.get("x-owner-chat") !== "1") return json({ error: "forbidden" }, 403);
   const hash = await sessionHash(request);
-  if (!hash) return json({ ok: true, revoked: false, reason: "no_session" }, 200, [CLEAR_SESSION, CLEAR_END]);
+  // Sessão aberta pelo painel (owner-panel-bridge.mjs): a sessão do painel que a originou é marcada como encerrada
+  // ANTES da revogação, então nenhum passe dela (nem um emitido antes desta saída) abre sessão de chat depois.
+  const sid = cookieValue(request, PANEL_SID_COOKIE_NAME);
+  const panelSid = sid && /^[A-Za-z0-9_-]{43}$/.test(sid) ? sid : null;
+  if (!hash && !panelSid) return json({ ok: true, revoked: false, reason: "no_session" }, 200, [CLEAR_SESSION, CLEAR_END, CLEAR_SID]);
   if (!sql) return json({ ok: false, error: "revoke_unconfirmed" }, 503);
-  let out;
-  try { out = await revokeSession(sql, hash); }
-  catch { console.warn(JSON.stringify({ event: "owner_chat_logout_unconfirmed" })); return json({ ok: false, error: "revoke_unconfirmed" }, 503); }
-  return json({ ok: true, revoked: true, pending_actions: out.pendingActions }, 200, [CLEAR_SESSION, CLEAR_END]);
+  let out = { pendingActions: null };
+  try {
+    if (panelSid) await endPanelSession(sql, await sha256Hex("panel-sid:" + panelSid));
+    if (hash) out = await revokeSession(sql, hash);
+  } catch { console.warn(JSON.stringify({ event: "owner_chat_logout_unconfirmed" })); return json({ ok: false, error: "revoke_unconfirmed" }, 503); }
+  return json({ ok: true, revoked: Boolean(hash), ...(panelSid ? { panel_session_ended: true } : {}), pending_actions: out.pendingActions }, 200, [CLEAR_SESSION, CLEAR_END, CLEAR_SID]);
 }
 
 export const PIN_PAGE_HEADERS = Object.freeze({
@@ -120,24 +128,27 @@ export const PIN_PAGE_HEADERS = Object.freeze({
   "referrer-policy": "no-referrer", "x-robots-tag": "noindex, nofollow",
 });
 
-export const PIN_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>ZEVANORY · Chat do proprietário</title>
-<style>:root{color-scheme:dark}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#05070b;color:#f5f8fc;font:16px/1.4 system-ui,Arial,sans-serif}
-.c{width:min(340px,calc(100vw - 32px));background:#0b0f17;border:1px solid #1e2633;border-radius:16px;padding:28px}h1{font-size:20px;margin:0 0 6px}p{color:#a9b4c2;margin:0 0 18px;font-size:14px}
-input{width:100%;box-sizing:border-box;font-size:28px;letter-spacing:10px;text-align:center;padding:12px;border-radius:10px;border:1px solid #2b3647;background:#05070b;color:#fff}
-button{margin-top:14px;width:100%;padding:12px;border:0;border-radius:10px;background:#00b8ff;color:#05070b;font-weight:700;font-size:16px;cursor:pointer}button:disabled{opacity:.5}
-#m{min-height:20px;margin-top:12px;font-size:14px;color:#ffb4a8}</style></head><body><main class="c">
-<h1>Chat do proprietário</h1><p>Digite seu PIN de 6 dígitos.</p>
-<input id="p" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" aria-label="PIN de 6 dígitos" autofocus>
-<button id="b" type="button">Entrar</button><div id="m" role="status"></div></main>
+// Tela do chat sem sessão. Desde 27/11/2026 não pede PIN: o painel (controle.zevanory.api.br) entrega um passe de uso
+// único, que esta página troca por uma sessão curta (owner-panel-bridge.mjs). Fora do painel, só orienta a abrir pelo
+// painel. O nome PIN_PAGE fica por compatibilidade.
+export const PIN_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>ZEVANORY · Epaminondas</title>
+<style>:root{color-scheme:dark}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1220;color:#e5e7eb;font:15px/1.45 system-ui,Arial,sans-serif}
+.c{width:min(320px,calc(100vw - 24px));padding:18px;text-align:center}h1{font-size:17px;margin:0 0 6px}p{color:#94a3b8;margin:0;font-size:14px}a{color:#38bdf8}html[data-theme=light] body{background:#f8fafc;color:#0f172a}html[data-theme=light] p{color:#475569}</style></head><body><main class="c">
+<h1>Epaminondas</h1><p id="m" role="status">Conectando ao painel…</p></main>
 <script>
-const p=document.getElementById("p"),b=document.getElementById("b"),m=document.getElementById("m");
-// Esc no PIN dentro do painel: avisa só a janela do painel (origem fixa); o painel confere origem e janela.
+const m=document.getElementById("m"),PANEL="https://controle.zevanory.api.br";
+// Esc no chat dentro do painel: avisa só a janela do painel (origem fixa); o painel confere origem e janela.
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&window.parent!==window)window.parent.postMessage({type:"zv-owner-chat:escape"},"https://controle.zevanory.api.br");});
-p.addEventListener("input",()=>{p.value=p.value.replace(/\\D/g,"").slice(0,6);if(p.value.length===6)go();});
-p.addEventListener("keydown",e=>{if(e.key==="Enter")go();});b.addEventListener("click",go);
-async function go(){if(!/^\\d{6}$/.test(p.value)){m.textContent="O PIN tem 6 números.";return;}b.disabled=true;m.textContent="";
-try{const r=await fetch("${OWNER_PIN_PATHS.login}",{method:"POST",headers:{"content-type":"application/json","x-owner-chat":"1"},body:JSON.stringify({pin:p.value}),credentials:"same-origin"});
+let busy=false;
+function pedir(){if(window.parent!==window)window.parent.postMessage({type:"zv-owner-chat:need-ticket"},PANEL);}
+async function trocar(t){if(busy)return;busy=true;
+try{const r=await fetch("/api/admin/owner-chat/panel-session",{method:"POST",headers:{"content-type":"application/json","x-owner-chat":"1"},body:JSON.stringify(t),credentials:"same-origin"});
 const j=await r.json().catch(()=>({}));if(r.ok){try{localStorage.removeItem("zv_owner_chat_logout_pending")}catch{}location.replace("/admin/proprietario");return;}
-m.textContent=r.status===429?"Muitas tentativas. Aguarde e tente de novo mais tarde.":r.status===401?("PIN incorreto."+(typeof j.restantes==="number"?" Tentativas restantes: "+j.restantes+".":"")):"Não foi possível entrar agora.";}
-catch{m.textContent="Sem conexão. Tente de novo.";}p.value="";b.disabled=false;p.focus();}
+m.textContent=r.status===401?"Sua sessão do painel acabou. Entre de novo no painel para conversar.":"O chat não respondeu agora. Vou tentar de novo em alguns segundos.";if(r.status!==401)setTimeout(pedir,10000);}
+catch{m.textContent="Sem conexão. Vou tentar de novo em alguns segundos.";setTimeout(pedir,10000);}finally{busy=false;}}
+window.addEventListener("message",e=>{if(e.origin!==PANEL||e.source!==window.parent||!e.data)return;
+if(e.data.type==="zv-owner-chat:ticket"&&e.data.ticket)trocar(e.data.ticket);
+else if(e.data.type==="zv-owner-chat:theme")document.documentElement.dataset.theme=e.data.theme==="light"?"light":"dark";
+else if(e.data.type==="zv-owner-chat:logout"){fetch("/api/admin/owner-chat/logout",{method:"POST",headers:{"content-type":"application/json","x-owner-chat":"1"},credentials:"same-origin"}).then(r=>r.json().then(j=>r.ok&&j.ok===true)).catch(()=>false).then(ok=>window.parent.postMessage({type:"zv-owner-chat:logged-out",ok},PANEL));}});
+if(window.parent===window){m.innerHTML='O Epaminondas abre dentro do painel. Entre em <a href="https://controle.zevanory.api.br/">controle.zevanory.api.br</a>.';}else pedir();
 </script></body></html>`;

@@ -46,7 +46,7 @@ test("PIN ligado: página sem sessão mostra o formulário de PIN (200, CSP, noi
   const h = harness();
   const page = await get(h, "/admin/proprietario");
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /PIN de 6 dígitos/);
+  assert.match(await page.text(), /zv-owner-chat:need-ticket/);
   assert.equal(page.headers.get("x-robots-tag"), "noindex, nofollow");
   assert.equal(page.headers.get("x-frame-options"), null);
   assert.equal((page.headers.get("content-security-policy").match(/frame-ancestors ([^;]*)/) || [])[1], "https://controle.zevanory.api.br");
@@ -78,7 +78,7 @@ test("R1: banco fora (criação, verificação) = acesso negado; sem banco confi
   h.sql.sfail.create = false; const c = cookieOf(await login(h, "482915", { ip: "7.7.7.7" }));
   h.sql.sfail.check = true;
   assert.equal((await get(h, "/api/admin/owner-chat/feed", c)).status, 401);
-  assert.equal((await get(h, "/admin/proprietario", c)).status, 200); assert.match(await (await get(h, "/admin/proprietario", c)).text(), /PIN de 6 dígitos/);
+  assert.equal((await get(h, "/admin/proprietario", c)).status, 200); assert.match(await (await get(h, "/admin/proprietario", c)).text(), /zv-owner-chat:need-ticket/);
   const nodb = harness({ db: false }); assert.equal((await login(nodb, "482915")).status, 503);
 });
 
@@ -185,11 +185,20 @@ test("R1.2: fase A (manutenção) recusa login e toda sessão; sessões antigas 
   const a = harness({ kv, sql, authority: "maintenance" });
   assert.equal((await login(a, "482915", { ip: "4.4.4.4" })).status, 503);
   assert.equal((await get(a, "/api/admin/owner-chat/feed", c)).status, 401, "nem a sessão válida no banco vale na fase A");
-  assert.match(await (await get(a, "/admin/proprietario", c)).text(), /PIN de 6 dígitos/);
+  assert.match(await (await get(a, "/admin/proprietario", c)).text(), /zv-owner-chat:need-ticket/);
   const purge = await sess.purgeLegacyKvSessions(kv, { force: true });
   assert.equal(purge.deleted, 1); assert.equal(kv.data.has(legacy), false); assert.equal(kv.data.has("zpc:owner-chat:versao:v1"), true, "só o prefixo das sessões antigas");
   // Fase B: cookie com formato antigo cujo hash existia só no KV não vale.
   assert.equal((await get(b, "/api/admin/owner-chat/feed", "zv_owner_chat=" + "c".repeat(64))).status, 401);
+});
+
+test("27/11: a tela sem sessão não pede PIN; pede o passe só à origem do painel e troca na rota da ponte", () => {
+  assert.doesNotMatch(pin.PIN_PAGE, /<input/, "nenhum campo de PIN");
+  assert.doesNotMatch(pin.PIN_PAGE, /owner-chat\/pin/, "a tela não chama o login por PIN");
+  assert.match(pin.PIN_PAGE, /window\.parent\.postMessage\(\{type:"zv-owner-chat:need-ticket"\},PANEL\)/);
+  assert.match(pin.PIN_PAGE, /e\.origin!==PANEL\|\|e\.source!==window\.parent/);
+  assert.match(pin.PIN_PAGE, /fetch\("\/api\/admin\/owner-chat\/panel-session"/);
+  assert.match(pin.PIN_PAGE, /O Epaminondas abre dentro do painel/);
 });
 
 test("pinConfigured: só exatamente 6 dígitos", () => {

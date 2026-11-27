@@ -27,20 +27,50 @@ export async function ensureSessionSchema(sql) {
   await sql.query(`alter table zevanory_owner_chat_pin_attempts add column if not exists ip_window_id uuid`, []);
   // Ação reivindicada: qual sessão a autorizou (para o logout informar ações já autorizadas ainda em andamento).
   await sql.query(`alter table zevanory_owner_chat_messages add column if not exists action_session text`, []);
+  // Sessão aberta pelo PAINEL: chave do marcador de fim da sessão do painel que a originou (sha256 de "panel-sid:"+sid).
+  // Coluna simples (forma canônica que o restauro em banco novo replica, gate runtime_ddl): o formato (64 hex ou nulo)
+  // é garantido na única escrita, createSession (HEX64), e o valor só é comparado por igualdade com token_sha256, que
+  // tem CHECK de 64 hex na tabela; valor fora do formato nunca seria gravado.
+  await sql.query(`alter table zevanory_owner_chat_sessions add column if not exists panel_end_marker text`, []);
   ready.add(sql);
 }
 
 // Condição de sessão válida, com trava compartilhada na linha. Usada DENTRO das instruções de trabalho.
-export const SESSION_VALID_SQL = (p) => `exists (select 1 from zevanory_owner_chat_sessions where token_sha256 = $${p} and revoked_at is null and expires_at > now() for share)`;
+// Sessão do painel encerrada (marcador gravado na saída) = toda sessão de chat ligada a ela deixa de valer NA HORA, em
+// qualquer aba e mesmo que uma renovação tenha corrido junto (não depende de qual cookie foi revogado).
+export const PANEL_LIVE_SQL = `(panel_end_marker is null or not exists (select 1 from zevanory_owner_chat_sessions m where m.token_sha256 = zevanory_owner_chat_sessions.panel_end_marker))`;
+export const SESSION_VALID_SQL = (p) => `exists (select 1 from zevanory_owner_chat_sessions where token_sha256 = $${p} and ${PANEL_LIVE_SQL} and revoked_at is null and expires_at > now() for share)`;
 
 export async function checkSession(sql, hash) {
   if (!HEX64.test(String(hash || ""))) return false;
-  const r = await sql.query(`/*owner-chat:session-check*/ select count(*)::int as n from (select 1 from zevanory_owner_chat_sessions where token_sha256 = $1 and revoked_at is null and expires_at > now() for share) s`, [hash]);
+  const r = await sql.query(`/*owner-chat:session-check*/ select count(*)::int as n from (select 1 from zevanory_owner_chat_sessions where token_sha256 = $1 and ${PANEL_LIVE_SQL} and revoked_at is null and expires_at > now() for share) s`, [hash]);
   return Number(r[0]?.n) === 1;
 }
-export async function createSession(sql, hash) {
-  const r = await sql.query(`/*owner-chat:session-create*/ insert into zevanory_owner_chat_sessions (token_sha256, expires_at) values ($1, now() + ($2::integer * interval '1 second')) returning 1 as ok`, [hash, SESSION_TTL_S]);
+export async function createSession(sql, hash, ttlS = SESSION_TTL_S, panelEndMarker = null) {
+  const ttl = Number.isInteger(ttlS) && ttlS > 0 && ttlS <= SESSION_TTL_S ? ttlS : SESSION_TTL_S;
+  const marker = HEX64.test(String(panelEndMarker || "")) ? panelEndMarker : null;
+  const r = await sql.query(`/*owner-chat:session-create*/ insert into zevanory_owner_chat_sessions (token_sha256, expires_at, panel_end_marker) values ($1, now() + ($2::integer * interval '1 second'), $3) returning 1 as ok`, [hash, ttl, marker]);
   return Number(r[0]?.ok) === 1;
+}
+// Passe do painel de uso único: grava uma linha-marcador JÁ REVOGADA (nunca vale como sessão) com a chave do passe.
+// A chave primária torna o uso atômico entre pontos de presença: a 2ª tentativa com o mesmo passe não insere nada.
+export async function claimTicket(sql, markerHash) {
+  if (!HEX64.test(String(markerHash || ""))) return false;
+  const r = await sql.query(`/*owner-chat:ticket-claim*/ insert into zevanory_owner_chat_sessions (token_sha256, expires_at, revoked_at) values ($1, now() + interval '10 minutes', now()) on conflict (token_sha256) do nothing returning 1 as ok`, [markerHash]);
+  return Number(r[0]?.ok) === 1;
+}
+// Fim da sessão do PAINEL que originou a sessão do chat (logout): linha-marcador revogada com a chave do painel. Depois
+// dela, nenhum passe daquela sessão do painel abre sessão de chat, nem um passe emitido antes da saída (até 14 h).
+export async function endPanelSession(sql, markerHash) {
+  if (!HEX64.test(String(markerHash || ""))) return false;
+  await sql.query(`/*owner-chat:panel-end*/ insert into zevanory_owner_chat_sessions (token_sha256, expires_at, revoked_at) values ($1, now() + interval '14 hours', now()) on conflict (token_sha256) do update set revoked_at = coalesce(zevanory_owner_chat_sessions.revoked_at, now())`, [markerHash]);
+  // E revoga TODAS as sessões de chat abertas por esse login do painel (outras abas, renovação em andamento).
+  await sql.query(`/*owner-chat:panel-revoke-all*/ update zevanory_owner_chat_sessions set revoked_at = now() where panel_end_marker = $1 and revoked_at is null`, [markerHash]);
+  return true;
+}
+export async function panelSessionEnded(sql, markerHash) {
+  const r = await sql.query(`/*owner-chat:panel-ended*/ select count(*)::int as n from zevanory_owner_chat_sessions where token_sha256 = $1`, [markerHash]);
+  return Number(r[0]?.n) > 0;
 }
 // Revoga (idempotente). Retorna { revoked: true, pendingActions } só depois do commit do UPDATE. A contagem de ações
 // é uma instrução SEPARADA, depois do commit: vê toda ação autorizada antes da revogação (nenhuma depois é possível).

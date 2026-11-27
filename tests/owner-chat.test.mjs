@@ -112,7 +112,7 @@ test("sentinela: canal pausado vira CANAL PARADO com motivo; sem novidade não a
   const o = { sqlFactory: h.deps.sqlFactory, snapshot: h.deps.snapshot };
   assert.equal((await chat.runOwnerChatSentinel(h.env, new Date("2026-11-12T23:10:00Z"), o)).alerts, 2);
   const bsky = h.sql.rows.find((r) => /bluesky/.test(r.body));
-  assert.equal(bsky.kind, "alerta"); assert.match(bsky.body, /PAUSADA/); assert.match(bsky.body, /retomar/);
+  assert.equal(bsky.kind, "alerta"); assert.match(bsky.body, /pausada/); assert.match(bsky.body, /retomar/);
   const before = h.sql.log.length;
   assert.equal((await chat.runOwnerChatSentinel(h.env, new Date("2026-11-12T23:40:00Z"), o)).alerts, 0);
   assert.equal(h.sql.log.length, before);
@@ -184,8 +184,8 @@ test("NC-G6-1030-10: blog fora da agenda não é CANAL PARADO; dia previsto atra
 });
 
 test("vendas: chave ausente = sem vendas; livro incompleto ou fora do esquema = inconclusivo, nunca zero (NC-CX-1030-04)", async () => {
-  assert.match((await send(harness(), "vendeu algo?"))[1].text, /Ainda não há nenhuma venda/);
-  assert.match((await send(harness({ kv: memKv({ [PAUSE]: "0", "zpc:sales:v1:summary": ledger(2, 19400) }) }), "vendas"))[1].text, /total: 2 \(R\$\s?194,00/);
+  assert.match((await send(harness(), "vendeu algo?"))[1].text, /Ainda não entrou nenhuma venda/);
+  assert.match((await send(harness({ kv: memKv({ [PAUSE]: "0", "zpc:sales:v1:summary": ledger(2, 19400) }) }), "vendas"))[1].text, /até agora: 2, somando R\$\s?194,00/);
   const bad = [
     "{quebrado",
     JSON.stringify({ totals: { approved: 1, grossCents: 100, refunded: 0 }, byDay: {} }),
@@ -200,7 +200,7 @@ test("vendas: chave ausente = sem vendas; livro incompleto ou fora do esquema = 
   ];
   for (const b of bad) {
     const t = (await send(harness({ kv: memKv({ [PAUSE]: "0", "zpc:sales:v1:summary": b }) }), "vendas"))[1].text;
-    assert.match(t, /ilegível/, b); assert.doesNotMatch(t, /NaN|R\$ 0,00/);
+    assert.match(t, /Não consegui ler o registro de vendas/, b); assert.doesNotMatch(t, /NaN|R\$ 0,00/);
   }
 });
 
@@ -218,7 +218,7 @@ test("ação aplicada e falha ao gravar o recibo: INCERTO, sem 'não executado',
   h.sql.tick(91000);
   await chat.reconcileActions(h.sql, kv);
   assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "executado");
-  assert.ok(h.sql.rows.some((x) => /Conferi: a ordem foi aplicada/.test(x.body)));
+  assert.ok(h.sql.rows.some((x) => /Feito e conferido/.test(x.body)));
   assert.equal(h.sql.lock.holder, null);
 });
 
@@ -235,7 +235,7 @@ test("ação incerta não aplicada: conferência diz NÃO aplicada; leitura indi
   kv.get = get;
   await chat.reconcileActions(h.sql, kv);
   assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "nao_aplicado");
-  assert.ok(h.sql.rows.some((x) => /NÃO foi aplicada/.test(x.body)));
+  assert.ok(h.sql.rows.some((x) => /pedido não foi aplicado/.test(x.body)));
   assert.equal(h.sql.lock.holder, null);
 });
 
@@ -294,7 +294,7 @@ test("ação: nota gravada antes de soltar a trava; falha na nota = conferência
   assert.equal(r.status, 202); assert.equal(h.sql.lock.holder, p.id, "trava segura até a confirmação");
   h.sql.tick(91000); kv.data.set(PAUSE, "1"); // mesmo que o valor mude depois, o recibo gravado manda
   await chat.reconcileActions(h.sql, kv);
-  assert.ok(h.sql.rows.some((x) => /Conferi: a ordem foi aplicada/.test(x.body))); assert.equal(h.sql.lock.holder, null);
+  assert.ok(h.sql.rows.some((x) => /Feito e conferido/.test(x.body))); assert.equal(h.sql.lock.holder, null);
   const h2 = harness({ kv: memKv({ [PAUSE]: "0" }) }); const p2 = (await send(h2, "retomar"))[1];
   const j2 = await (await h2.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p2.id } }))).json();
   assert.equal(j2.state, "executado"); assert.match(j2.messages[0].text, /Já estava assim/); assert.equal(h2.kv.writes.filter((k) => k === PAUSE).length, 0);
@@ -402,5 +402,5 @@ test("mutantes morrem", async () => {
     return h.sql.lock.holder === p.id;
   });
   await mutant("pausa-sem-motivo", "facts.pause === \"pausada\" ? \"pausado\"", "false ? \"pausado\"", async (m) =>
-    /PAUSADA/.test(m.findStoppedChannels({ day: "2026-11-12", hour: 20, pause: "pausada", snap: { today: [{ channel: "bluesky", status: "sem dados" }] } }).find((s) => s.channel === "bluesky")?.text || ""));
+    /pausada/.test(m.findStoppedChannels({ day: "2026-11-12", hour: 20, pause: "pausada", snap: { today: [{ channel: "bluesky", status: "sem dados" }] } }).find((s) => s.channel === "bluesky")?.text || ""));
 });

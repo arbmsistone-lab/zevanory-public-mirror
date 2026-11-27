@@ -26,19 +26,19 @@ const ps = (em, resultado, extra = {}) => JSON.stringify({ em: new Date(em).toIS
 test("NC-CX-1031-01: chave apagada não resolve; só sucesso real posterior resolve", async () => {
   const kv = memKv({ "zpc:creative-autonomy:paused:v1": "0", [vigia.CRON_BEAT_KEY]: beat(T, { nurture: "fail:timeout" }) }), sql = fakeSql();
   await run(kv, sql, T);
-  assert.equal(bodies(sql, /PROBLEMA.*nurture/).length, 1);
+  assert.equal(bodies(sql, /Problema.*nurture/).length, 1);
   kv.data.delete(vigia.CRON_BEAT_KEY);
   await run(kv, sql, T + HOUR);
-  assert.equal(bodies(sql, /RESOLVIDO/).length, 0, "ausência não é saúde");
+  assert.equal(bodies(sql, /Resolvido/).length, 0, "ausência não é saúde");
   kv.data.set(vigia.CRON_BEAT_KEY, beat(T + 2 * HOUR, { nurture: "ok" }));
   await run(kv, sql, T + 2 * HOUR);
-  assert.equal(bodies(sql, /RESOLVIDO.*nurture/).length, 1);
+  assert.equal(bodies(sql, /Resolvido.*nurture/).length, 1);
 });
 
 test("NC-CX-1031-01: pós-venda vencido, contraditório ou com campo a mais nunca vira RESOLVIDO", async () => {
   const kv = memKv({ "zpc:creative-autonomy:paused:v1": "0", [vigia.POST_SALE_STATUS_KEY]: ps(T, "reconciliacao_pendente") }), sql = fakeSql();
   await run(kv, sql, T);
-  assert.equal(bodies(sql, /PROBLEMA.*pós-venda/).length, 1);
+  assert.equal(bodies(sql, /Problema.*pós-venda/).length, 1);
   await run(kv, sql, T + 4 * HOUR); // mesmo estado, vencido = desconhecido
   const contraditorios = [
     ps(T + 5 * HOUR, "ok", { pendentes: 3 }), // "ok" com pendentes
@@ -50,11 +50,11 @@ test("NC-CX-1031-01: pós-venda vencido, contraditório ou com campo a mais nunc
     ps(T + 9 * HOUR, "ok"), // futuro
   ];
   for (const c of contraditorios) { kv.data.set(vigia.POST_SALE_STATUS_KEY, c); await run(kv, sql, T + 5 * HOUR); }
-  assert.equal(bodies(sql, /RESOLVIDO/).length, 0);
-  assert.equal(bodies(sql, /pós-venda está ilegível/).length, 1, "contradição vira falha de leitura, uma vez");
+  assert.equal(bodies(sql, /Resolvido/).length, 0);
+  assert.equal(bodies(sql, /Não consegui ler o registro dos e-mails de pós-venda/).length, 1, "contradição vira falha de leitura, uma vez");
   kv.data.set(vigia.POST_SALE_STATUS_KEY, ps(T + 6 * HOUR, "ok"));
   await run(kv, sql, T + 6 * HOUR);
-  assert.equal(bodies(sql, /RESOLVIDO.*pós-venda/).length, 2, "pendência e leitura resolvidas com evidência real");
+  assert.equal(bodies(sql, /Resolvido.*pós-venda/).length, 2, "pendência e leitura resolvidas com evidência real");
   assert.equal(vigia.validPostSaleStatus(JSON.parse(ps(T, "ok")), T), true);
 });
 
@@ -62,13 +62,13 @@ test("NC-CX-1031-01: canal só resolve com publicação de data válida, de hoje
   const kv = memKv({ "zpc:creative-autonomy:paused:v1": "1" }), sql = fakeSql();
   const blogOk = { channel: "blog", status: "publicado", at: new Date(T).toISOString() };
   await run(kv, sql, T, { today: [{ channel: "bluesky", status: "pausado" }, blogOk] });
-  assert.equal(bodies(sql, /CANAL PARADO.*bluesky/).length, 1);
+  assert.equal(bodies(sql, /Canal parado.*bluesky/).length, 1);
   await run(kv, sql, T + HOUR, null);
   for (const at of [undefined, null, "", "ontem", new Date(T - 30 * HOUR).toISOString(), new Date(T + 5 * HOUR).toISOString()])
     await run(kv, sql, T + HOUR + 60000, { today: [{ channel: "bluesky", status: "publicado", at }, blogOk] });
-  assert.equal(bodies(sql, /RESOLVIDO/).length, 0, "publicado sem data válida = desconhecido");
+  assert.equal(bodies(sql, /Resolvido/).length, 0, "publicado sem data válida = desconhecido");
   await run(kv, sql, T + 2 * HOUR, { today: [{ channel: "bluesky", status: "publicado", at: new Date(T + 2 * HOUR).toISOString() }, blogOk] });
-  assert.equal(bodies(sql, /RESOLVIDO.*bluesky/).length, 1);
+  assert.equal(bodies(sql, /Resolvido.*bluesky/).length, 1);
 });
 
 test("NC-CX-1031-01: workflow com falha que envelhece vira desconhecido; resumo vencido é falha de observação", () => {
@@ -85,20 +85,20 @@ test("NC-CX-1031-01 r3: saúde datada no futuro (ciclo, resumo, workflow) nunca 
   await run(kv, sql, T);
   kv.data.set(vigia.CRON_BEAT_KEY, beat(TOMORROW, { nurture: "ok" }));
   await run(kv, sql, T + 60000); await run(kv, sql, T + HOUR);
-  assert.equal(bodies(sql, /RESOLVIDO/).length, 0, "ciclo datado amanhã");
+  assert.equal(bodies(sql, /Resolvido/).length, 0, "ciclo datado amanhã");
   assert.ok(vigia.observeCron({ state: "ok", value: JSON.parse(beat(TOMORROW, { nurture: "ok" })) }, T).every((o) => o.health === "falha"));
   kv.data.set(vigia.CRON_BEAT_KEY, beat(T + 2 * HOUR, { nurture: "ok" }));
   await run(kv, sql, T + 2 * HOUR);
-  assert.equal(bodies(sql, /RESOLVIDO.*nurture/).length, 1);
+  assert.equal(bodies(sql, /Resolvido.*nurture/).length, 1);
   // workflow do GitHub: resumo futuro e workflow futuro
   const sum = (at, wfAt, state) => JSON.stringify({ schema: 2, at: new Date(at).toISOString(), workflows: { [P18]: { state, run_id: 9, at: new Date(wfAt).toISOString() } } });
   const kv2 = memKv({ "zpc:creative-autonomy:paused:v1": "0", [vigia.VIGIA_ACTIONS_KEY]: sum(T, T - 60000, "falha") }), sql2 = fakeSql();
   await run(kv2, sql2, T);
-  assert.equal(bodies(sql2, /PROBLEMA.*p18/).length, 1);
+  assert.equal(bodies(sql2, /Problema.*p18/).length, 1);
   for (const [a, w] of [[TOMORROW, TOMORROW], [T + HOUR, TOMORROW], [T + HOUR, T + 2 * HOUR]]) { kv2.data.set(vigia.VIGIA_ACTIONS_KEY, sum(a, w, "saudavel")); await run(kv2, sql2, T + HOUR); }
-  assert.equal(bodies(sql2, /RESOLVIDO/).length, 0, "resumo/workflow no futuro ou depois do próprio resumo");
+  assert.equal(bodies(sql2, /Resolvido/).length, 0, "resumo/workflow no futuro ou depois do próprio resumo");
   kv2.data.set(vigia.VIGIA_ACTIONS_KEY, sum(T + HOUR, T + 30 * 60000, "saudavel")); await run(kv2, sql2, T + HOUR);
-  assert.equal(bodies(sql2, /RESOLVIDO.*p18/).length, 1);
+  assert.equal(bodies(sql2, /Resolvido.*p18/).length, 1);
   // segunda barreira no motor: saúde futura de qualquer origem é descartada
   const sql3 = fakeSql(), kv3 = memKv(), ins = (db, m) => chat.insertOwnerMessage(db, m);
   await inc.runIncidents({ sql: sql3, kv: kv3, observations: [{ key: "x", health: "falha", at: T, text: "x" }], insertMessage: ins, now: T });
@@ -113,11 +113,11 @@ test("NC-CX-1031-02: concorrência = uma ocorrência e um aviso; reabrir com fal
   const sql = fakeSql();
   const mk = () => memKv({ "zpc:creative-autonomy:paused:v1": "0", [vigia.CRON_BEAT_KEY]: beat(T, { nurture: "fail:timeout" }) });
   await Promise.all([run(mk(), sql, T), run(mk(), sql, T + 1000)]);
-  assert.equal(sql.vstate.get(NURTURE).gen, 1); assert.equal(bodies(sql, /PROBLEMA.*nurture/).length, 1);
+  assert.equal(sql.vstate.get(NURTURE).gen, 1); assert.equal(bodies(sql, /Problema.*nurture/).length, 1);
   const kv = mk();
   kv.data.set(vigia.CRON_BEAT_KEY, beat(T + HOUR, { nurture: "ok" })); await run(kv, sql, T + HOUR);
   kv.data.set(vigia.CRON_BEAT_KEY, beat(T + 2 * HOUR, { nurture: "fail:timeout" })); await run(kv, sql, T + 2 * HOUR);
-  assert.equal(sql.vstate.get(NURTURE).gen, 2); assert.equal(bodies(sql, /PROBLEMA.*nurture/).length, 2);
+  assert.equal(sql.vstate.get(NURTURE).gen, 2); assert.equal(bodies(sql, /Problema.*nurture/).length, 2);
 });
 
 test("NC-CX-1031-02: falha antiga atrasada não reabre incidente resolvido; saúde e falha no mesmo lote = falha", async () => {
@@ -145,8 +145,8 @@ test("NC-CX-1031-02: falha antiga atrasada não reabre incidente resolvido; saú
   await R2([{ key: "k", health: "falha", at: T + 3 * HOUR, text: "x" }]);
   await R2([{ key: "k", health: "falha", at: T + 3 * HOUR + 1, text: "x" }]);
   assert.equal(sql2.vstate.get("k").gen, 2);
-  assert.equal(bodies(sql2, /RESOLVIDO/).length, 1);
-  assert.equal(bodies(sql2, /PROBLEMA/).length, 2);
+  assert.equal(bodies(sql2, /Resolvido/).length, 1);
+  assert.equal(bodies(sql2, /Problema/).length, 2);
 });
 
 test("NC-CX-1031-03: falha em qualquer ponto do aviso não perde nem duplica a confirmação", async () => {
@@ -161,7 +161,7 @@ test("NC-CX-1031-03: falha em qualquer ponto do aviso não perde nem duplica a c
     sql.query = q; kv.put = put;
     await run(kv, sql, T + HOUR + 1000);
     await run(kv, sql, T + 2 * HOUR);
-    assert.equal(bodies(sql, /RESOLVIDO.*nurture/).length, 1, point);
+    assert.equal(bodies(sql, /Resolvido.*nurture/).length, 1, point);
   }
 });
 

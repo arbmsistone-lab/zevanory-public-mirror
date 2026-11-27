@@ -16,6 +16,9 @@ on:
       - "worker/owner-session.mjs"
       - "tests/integration/owner-chat-session-postgres.test.mjs"
       - "tests/integration/owner-chat-rollback-postgres.test.mjs"
+      - "tests/integration/owner-chat-schema-migration-postgres.test.mjs"
+      - "worker/owner-panel-bridge.mjs"
+      - "scripts/ops/restore_new_database.py"
   workflow_dispatch:
 
 permissions:
@@ -60,8 +63,8 @@ jobs:
           node --test tests/integration/owner-chat-session-postgres.test.mjs 2>&1 | grep -v '"event":"owner_chat_pin_failed"' | tee s.txt
           echo "::notice title=COUNTS_SESSION::$(grep -E '^# (tests|pass|fail|skipped|todo|cancelled) ' s.txt | paste -sd' ' -)"
           echo "::notice title=RACE::$(grep -oE 'OWNER_CHAT_PG_RACE .*' s.txt)"
-          grep -qx "# tests 9" s.txt && grep -qx "# pass 9" s.txt && grep -qx "# skipped 0" s.txt && grep -qx "# todo 0" s.txt && grep -qx "# fail 0" s.txt && grep -qx "# cancelled 0" s.txt
-          test "$(grep -c '^# OWNER_CHAT_PG_COUNTERPROOF .*=DETECTED$' s.txt)" = "6"
+          grep -qx "# tests 11" s.txt && grep -qx "# pass 11" s.txt && grep -qx "# skipped 0" s.txt && grep -qx "# todo 0" s.txt && grep -qx "# fail 0" s.txt && grep -qx "# cancelled 0" s.txt
+          test "$(grep -c '^# OWNER_CHAT_PG_COUNTERPROOF .*=DETECTED$' s.txt)" = "7"
       - name: Rollback seguro (R1.2) para a fase A certificada (contagem exata)
         env:
           T4_PG_HOST: localhost
@@ -71,6 +74,16 @@ jobs:
           node --test tests/integration/owner-chat-rollback-postgres.test.mjs 2>&1 | grep -v '"event":"owner_chat_pin_failed"' | tee r.txt
           echo "::notice title=COUNTS_ROLLBACK::$(grep -E '^# (tests|pass|fail|skipped|todo|cancelled) ' r.txt | paste -sd' ' -)"
           grep -qx "# tests 2" r.txt && grep -qx "# pass 2" r.txt && grep -qx "# fail 0" r.txt && grep -qx "# skipped 0" r.txt && grep -qx "# cancelled 0" r.txt && grep -q "a-sem-purga=DETECTED" r.txt
+      - name: Coluna panel_end_marker — migração do esquema anterior e restauro em banco vazio (PostgreSQL real)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/owner-chat-schema-migration-postgres.test.mjs 2>&1 | tee m.txt
+          echo "::notice title=COUNTS_SCHEMA::$(grep -E '^# (tests|pass|fail|skipped|todo|cancelled) ' m.txt | paste -sd' ' -)"
+          grep -qx "# tests 3" m.txt && grep -qx "# pass 3" m.txt && grep -qx "# fail 0" m.txt && grep -qx "# skipped 0" m.txt && grep -qx "# cancelled 0" m.txt
+          grep -q "OWNER_CHAT_SCHEMA migracao=PASS" m.txt && grep -q "OWNER_CHAT_SCHEMA restauro=PASS" m.txt && grep -q "restauro-sem-alter=DETECTED" m.txt
       - name: Evidência
         if: always()
         uses: actions/upload-artifact@v4
@@ -78,5 +91,6 @@ jobs:
           name: owner-chat-session-postgres
           path: |
             s.txt
+            m.txt
             r.txt
           retention-days: 90
