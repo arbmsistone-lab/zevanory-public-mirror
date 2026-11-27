@@ -18,6 +18,7 @@ on:
       - "scripts/b0/p18-commercial.mjs"
       - "scripts/b0/p18-commercial-browser.mjs"
       - "data/p18-commercial-allowlist.json"
+      - "data/p18-hotmart-direct-authorization.json"
       - "data/products.json"
       - "worker/sales-public-worker.mjs"
       - "sales-public/**"
@@ -73,7 +74,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p18_commercial.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P18_COMMERCIAL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=28 killed=28 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=38 killed=38 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"

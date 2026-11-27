@@ -24,7 +24,7 @@ ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 TESTS = ["tests/p18-commercial.test.mjs"]
 COPY_DIRS = ["tests/fixtures/p18-commercial", "sales-public"]
-COPY_FILES = TESTS + ["tests/helpers/text.mjs", "scripts/b0/p18-commercial.mjs", "data/p18-commercial-allowlist.json", "data/products.json", "worker/sales-public-worker.mjs"]
+COPY_FILES = TESTS + ["tests/helpers/text.mjs", "scripts/b0/p18-commercial.mjs", "data/p18-commercial-allowlist.json", "data/p18-hotmart-direct-authorization.json", "data/products.json", "worker/sales-public-worker.mjs"]
 TIMEOUT = 300
 NODE = shutil.which("node") or "node"
 C = "scripts/b0/p18-commercial.mjs"
@@ -61,6 +61,18 @@ M = {
     "K26 rota do site não conferida no live": (C, '    results.push({ link: routeUrl, source: "live:site_route"', '    if (false) results.push({ link: routeUrl, source: "live:site_route"'),
     "K27 relatório vazio passa": (C, "  const verdict = results.length > 0 && fail === 0 ? PASS : FAIL;", "  const verdict = fail === 0 ? PASS : FAIL;"),
     "K28 404 da assinatura aceito para kit": (C, '    if (status === 404 && product.kind === "subscription" && !loc)', '    if (status === 404 && !loc)'),
+    # Abertura direta autorizada (decisão de 25/11/2026): cada regra que separa o estado decidido de um desvio real.
+    "K29 preço decidido não conferido": (C, '  if (prices[0] !== entry.price_cash_brl) return', '  if (false) return'),
+    "K30 preço ilegível aceito": (C, '  if (prices.length === 0) return { verdict: FAIL, reason: "authorized_direct_price_unverified" };\n', ""),
+    "K31 preço ambíguo aceito": (C, '  if (prices.length > 1) return { verdict: FAIL, reason: "authorized_direct_price_ambiguous:" + prices.join("|") };\n', ""),
+    "K32 kit autorizado fechado passa": (C, '  if (cls.state === "closed") return { verdict: FAIL, reason: "authorized_direct_open_but_closed" };', '  if (cls.state === "closed") return { verdict: PASS, reason: "authorized_direct_open_but_closed" };'),
+    "K33 exceção vale com a trava aberta ou desconhecida": (C, '  if (!direct || mode !== "globally-blocked" || channelOpen === true', '  if (!direct || channelOpen === true'),
+    "K34 exceção vale com o canal do site aberto": (C, '  if (!direct || mode !== "globally-blocked" || channelOpen === true || !product', '  if (!direct || mode !== "globally-blocked" || !product'),
+    "K35 assinatura aceita na decisão": (C, '    if (p.kind !== "kit") fail("not_a_kit " + e.slug);\n', ""),
+    "K36 oferta da decisão não conferida com a lista fechada": (C, '    for (const k of ["hotmart_product_id", "checkout_code", "offer"]) if', '    for (const k of ["hotmart_product_id"]) if'),
+    "K37 identidade divergente aceita na exceção": (C, '  if (cls.state === "mismatch" || cls.state === "unverifiable") return { verdict: FAIL, reason: cls.reason };\n  if (cls.state === "closed") return { verdict: FAIL, reason: "authorized_direct',
+                                                   '  if (cls.state === "unverifiable") return { verdict: FAIL, reason: cls.reason };\n  if (cls.state === "mismatch") return { verdict: PASS, reason: "x" };\n  if (cls.state === "closed") return { verdict: FAIL, reason: "authorized_direct'),
+    "K38 preço offline não conferido com o catálogo": (C, '    const ok = want !== null && e.price_cash_brl === want;', '    const ok = want !== null;'),
 }
 
 ALLOW_FILE = Path(os.environ.get("P18C_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p18_commercial_allow.json"))

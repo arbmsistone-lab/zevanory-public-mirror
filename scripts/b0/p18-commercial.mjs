@@ -16,6 +16,11 @@
 //    checkout aberto com a trava fechada = FAIL (o interruptor não é global);
 //  - enabled: o checkout precisa estar aberto e mostrar o produto e o produtor esperados; fechado = FAIL;
 //  - trava ilegível ou fora do ar = FAIL de todos os links (fail-closed).
+//  - EXCEÇÃO AUTORIZADA (data/p18-hotmart-direct-authorization.json, decisão do proprietário de 25/11/2026): com a
+//    trava fechada E o canal Hotmart do site fechado, SÓ os kits listados ali podem ter o checkout direto aberto, com
+//    produto e produtor conferidos E o preço à vista igual ao registrado. A rota do site continua tendo de estar
+//    pausada. Fora da lista (ex.: Conteúdo Pronto), preço diferente, preço ilegível ou ambíguo, identidade divergente:
+//    FAIL. Kit autorizado com o checkout fechado também é FAIL (desvio do estado decidido).
 // Página que só responde 200, sem produto, sem produtor e sem o aviso de vendas fechadas = FAIL
 // (http_200_without_commercial_evidence).
 //
@@ -61,6 +66,51 @@ export function validateAllowlist(a) {
   return a;
 }
 export const loadAllowlist = (root = ".") => validateAllowlist(JSON.parse(readFileSync(join(root, "data/p18-commercial-allowlist.json"), "utf8")));
+
+// ---------------------------------------------------------------- abertura direta autorizada (25/11/2026)
+export const SCHEMA_DIRECT = "zevanory.p18.hotmart-direct-authorization.v1";
+export const DIRECT_SCOPE = "site_locked_direct_hotmart_links";
+export function validateDirectAuthorization(d, allow) {
+  const fail = (m) => { throw new Error("P18C_DIRECT_AUTH_INVALID " + m); };
+  if (!isObj(d) || d.schema !== SCHEMA_DIRECT) fail("schema");
+  if (d.scope !== DIRECT_SCOPE) fail("scope");
+  if (!isObj(d.decision) || !isStr(d.decision.by) || !isStr(d.decision.text) || !isStr(d.decision.record)
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(d.decision.at || "")) fail("decision");
+  if (!Array.isArray(d.products) || d.products.length === 0) fail("products");
+  const seen = new Set();
+  for (const e of d.products) {
+    if (!isObj(e) || seen.has(e.slug)) fail("entry " + JSON.stringify(e?.slug));
+    seen.add(e.slug);
+    const p = allow.products.find((x) => x.slug === e.slug);
+    if (!p) fail("unknown_slug " + e.slug);
+    if (p.kind !== "kit") fail("not_a_kit " + e.slug);
+    for (const k of ["hotmart_product_id", "checkout_code", "offer"]) if (e[k] !== p[k]) fail("diverges_from_closed_list " + e.slug + " " + k);
+    if (!/^\d{1,6},\d{2}$/.test(e.price_cash_brl || "")) fail("price " + e.slug);
+  }
+  return d;
+}
+export const loadDirectAuthorization = (root = ".", allow = loadAllowlist(root)) =>
+  validateDirectAuthorization(JSON.parse(readFileSync(join(root, "data/p18-hotmart-direct-authorization.json"), "utf8")), allow);
+// Preço à vista exibido no checkout ("Ou R$ 97,00 à vista"), sobre o texto pesquisável (minúsculas, NFC).
+export function cashPrices(text) {
+  return [...new Set([...String(text).matchAll(/\bou\s*r\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})\s*(?:à|a)\s*vista\b/g)].map((m) => m[1].replace(/\./g, "")))];
+}
+// Entrada autorizada para o produto, só com a trava completa fechada e o canal Hotmart do site fechado para ele.
+export function directEntry(direct, product, mode, channelOpen) {
+  if (!direct || mode !== "globally-blocked" || channelOpen === true || !product || product.kind !== "kit") return null;
+  const e = direct.products.find((x) => x.slug === product.slug);
+  return e && e.hotmart_product_id === product.hotmart_product_id && e.checkout_code === product.checkout_code && e.offer === product.offer ? e : null;
+}
+export function decideDirectCheckout(cls, text, entry) {
+  if (cls.state === "mismatch" || cls.state === "unverifiable") return { verdict: FAIL, reason: cls.reason };
+  if (cls.state === "closed") return { verdict: FAIL, reason: "authorized_direct_open_but_closed" };
+  if (cls.state !== "open") return { verdict: FAIL, reason: "checkout_state_unknown" };
+  const prices = cashPrices(text);
+  if (prices.length === 0) return { verdict: FAIL, reason: "authorized_direct_price_unverified" };
+  if (prices.length > 1) return { verdict: FAIL, reason: "authorized_direct_price_ambiguous:" + prices.join("|") };
+  if (prices[0] !== entry.price_cash_brl) return { verdict: FAIL, reason: "authorized_direct_price_mismatch:" + prices[0] };
+  return { verdict: PASS, reason: "open_authorized_direct_hotmart" };
+}
 
 // ---------------------------------------------------------------- texto
 const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
@@ -343,11 +393,19 @@ export function runOffline(root = ".") {
       results.push({ link: l.href, source: l.source, slug, verdict: FAIL, reason: "static_page_buy_link:" + (s.ok ? "in_closed_list" : s.reason) });
     }
   }
+  // 4. abertura direta autorizada: cada kit da decisão com o preço à vista igual ao do catálogo oficial.
+  const direct = loadDirectAuthorization(root, allow);
+  for (const e of direct.products) {
+    const c = products.products.find((x) => x.slug === e.slug);
+    const want = c && Number.isFinite(c.price) ? c.price.toFixed(2).replace(".", ",") : null;
+    const ok = want !== null && e.price_cash_brl === want;
+    results.push({ link: null, source: "data/p18-hotmart-direct-authorization.json", slug: e.slug, verdict: ok ? PASS : FAIL, reason: ok ? "direct_price_matches_catalog" : "direct_price_diverges_from_catalog:" + want });
+  }
   return buildReport("offline", results, { pages_scanned: readdirSync(dir).filter((x) => x.endsWith(".html")).length });
 }
 
 // ---------------------------------------------------------------- modo live (agendado, somente GET)
-export async function runLive({ allow, fetchImpl = fetch, renderCheckout = null, now = () => Date.now() } = {}) {
+export async function runLive({ allow, direct = null, fetchImpl = fetch, renderCheckout = null, now = () => Date.now() } = {}) {
   const started = new Date(now()).toISOString();
   const siteHost = hostOf(allow.site_origin), relHost = hostOf(allow.release_url);
   const rel = await safeGetNoFollow(allow.release_url, { fetchImpl, allowHosts: [relHost] });
@@ -360,7 +418,9 @@ export async function runLive({ allow, fetchImpl = fetch, renderCheckout = null,
   }
   const results = [];
   for (const p of allow.products) {
-    const em = effectiveSalesMode(sm.mode, hc.open === true && (hc.products || []).includes(p.slug), p);
+    const chOpen = hc.open === true && (hc.products || []).includes(p.slug);
+    const em = effectiveSalesMode(sm.mode, chOpen, p);
+    const de = directEntry(direct, p, sm.mode, chOpen);
     const routeUrl = allow.site_origin + p.site_route;
     const route = await safeGetNoFollow(routeUrl, { fetchImpl, allowHosts: [siteHost] });
     let ir = null;
@@ -373,11 +433,13 @@ export async function runLive({ allow, fetchImpl = fetch, renderCheckout = null,
     if (!shape.ok) { results.push({ link: href, source: "live:checkout", slug: p.slug, verdict: FAIL, reason: shape.reason }); continue; }
     const got = renderCheckout ? await renderCheckout(href) : await safeGet(href, { fetchImpl, allowHosts: allow.redirect_hosts });
     const cls = got.error && !got.body ? { state: "unverifiable", reason: got.error, identity: null } : classifyCheckout(got, p, allow);
-    const d = decideCheckout(em, cls);
+    const d = de ? decideDirectCheckout(cls, searchableText(got.body || ""), de) : decideCheckout(em, cls);
     results.push({ link: href, source: "live:checkout", slug: p.slug, verdict: d.verdict, reason: sm.mode ? d.reason : sm.reason,
+      ...(de ? { authorized_direct: true, price_expected: de.price_cash_brl, prices_seen: cashPrices(searchableText(got.body || "")) } : {}),
       http_status: got.status, hops: got.hops || [], state: cls.state, identity: cls.identity, ...(got.blocked_non_get !== undefined ? { blocked_non_get: got.blocked_non_get } : {}) });
   }
-  return buildReport("live", results, { started_at: started, finished_at: new Date(now()).toISOString(), sales_mode: sm.mode, sales_mode_reason: sm.reason, hotmart_channel: hc.open, hotmart_channel_reason: hc.reason });
+  return buildReport("live", results, { started_at: started, finished_at: new Date(now()).toISOString(), sales_mode: sm.mode, sales_mode_reason: sm.reason, hotmart_channel: hc.open, hotmart_channel_reason: hc.reason,
+    direct_authorization: direct ? { scope: direct.scope, decision_at: direct.decision.at, products: direct.products.map((x) => x.slug) } : null });
 }
 
 // ---------------------------------------------------------------- CLI
@@ -388,9 +450,10 @@ async function main(argv) {
   if (mode === "offline") report = runOffline(root);
   else if (mode === "live") {
     const allow = loadAllowlist(root);
+    const direct = loadDirectAuthorization(root, allow);
     let renderCheckout = null;
     if (argv.includes("--browser")) renderCheckout = (await import("./p18-commercial-browser.mjs")).makeBrowserRenderer(allow);
-    try { report = await runLive({ allow, renderCheckout }); } finally { await renderCheckout?.close?.(); }
+    try { report = await runLive({ allow, direct, renderCheckout }); } finally { await renderCheckout?.close?.(); }
   } else throw new Error("modo desconhecido: " + mode);
   const json = JSON.stringify(report, null, 2) + "\n";
   if (out) writeFileSync(out, json);

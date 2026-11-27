@@ -10,6 +10,7 @@ import { join } from "node:path";
 import {
   loadAllowlist, validateAllowlist, extractPurchaseLinks, checkLinkShape, readSalesMode, classifyCheckout, decideCheckout,
   decideSiteRoute, safeGet, safeInit, assertSafeInit, runOffline, runLive, buildReport, workerCheckoutLinks, PASS, FAIL, MAX_REDIRECTS,
+  loadDirectAuthorization, validateDirectAuthorization, cashPrices, directEntry, decideDirectCheckout,
 } from "../scripts/b0/p18-commercial.mjs";
 
 const FX = (n) => readTextNormalized(new URL("./fixtures/p18-commercial/" + n, import.meta.url));
@@ -44,7 +45,7 @@ test("modo offline: links do Worker de vendas = lista fechada; páginas estátic
 // Árvore mínima temporária para o modo offline com uma divergência injetada por vez.
 function offlineTree(mutate) {
   const d = mkdtempSync(join(tmpdir(), "p18c-"));
-  for (const rel of ["data/p18-commercial-allowlist.json", "data/products.json", "worker/sales-public-worker.mjs"]) {
+  for (const rel of ["data/p18-commercial-allowlist.json", "data/p18-hotmart-direct-authorization.json", "data/products.json", "worker/sales-public-worker.mjs"]) {
     mkdirSync(join(d, rel, ".."), { recursive: true }); copyFileSync(rel, join(d, rel));
   }
   mkdirSync(join(d, "sales-public"), { recursive: true });
@@ -337,4 +338,110 @@ test("P18C.21: runLive segue o /ir só com utm_source=diagnostico (fora das mét
   for (const x of irs) { assert.equal(new URL(x).searchParams.get("utm_source"), "diagnostico", "[P18C.21] só origem diagnostico"); assert.equal(new URL(x).hostname, new URL(allow.site_origin).hostname, "[P18C.21] só o host do site"); }
   const rotas = rep.results.filter((r) => r.source === "live:site_route" && /^\/hotmart\//.test(new URL(r.link).pathname));
   assert.ok(rotas.length >= 1 && rotas.every((r) => r.verdict === PASS), "[P18C.21] rotas /hotmart passam com o salto válido: " + JSON.stringify(rotas.map((r) => [r.slug, r.reason])));
+});
+
+// ---------------------------------------------------------------- abertura direta autorizada (decisão de 25/11/2026)
+// Estado decidido: trava do site fechada, canal Hotmart do site fechado, e SÓ os 5 kits vendendo pelo link direto da
+// Hotmart, pelo preço à vista registrado. Tudo fora disso continua FAIL (desvio real).
+const direct = loadDirectAuthorization(".", allow);
+const KITS = allow.products.filter((p) => p.kind === "kit");
+const CP = allow.products.find((p) => p.kind === "subscription");
+const priceOf = (slug) => direct.products.find((x) => x.slug === slug).price_cash_brl;
+const withPrice = (html, price) => html.replace("</section>", `<p>12 x de R$ 10,03 *</p><p>Ou R$ ${price} à vista</p></section>`);
+const openKit = (slug, price = priceOf(slug)) => withPrice(productFixture(slug, "hotmart-open-ok.html"), price);
+const closedOf = (slug) => productFixture(slug, "hotmart-closed-049.html");
+const slugOfUrl = (u) => allow.products.find((p) => u.includes(p.checkout_code)).slug;
+// Estado autorizado: kits abertos com o preço certo, Conteúdo Pronto fechado, rotas do site pausadas.
+const authorizedCheckout = (u) => { const s = slugOfUrl(u); return [200, null, s === CP.slug ? closedOf(s) : openKit(s)]; };
+
+test("P18C.D1: decisão de abertura direta válida, um para um com a lista fechada; formas inválidas derrubam", () => {
+  assert.deepEqual(direct.products.map((x) => x.slug).sort(), KITS.map((x) => x.slug).sort(), "[P18C.D1] só os 5 kits");
+  assert.deepEqual(direct.products.map((x) => x.price_cash_brl), ["97,00", "97,00", "147,00", "157,00", "247,00"], "[P18C.D1] preços decididos");
+  const bad = (f) => { const d = structuredClone(direct); f(d); return () => validateDirectAuthorization(d, allow); };
+  assert.throws(bad((d) => d.products.push({ slug: CP.slug, hotmart_product_id: CP.hotmart_product_id, checkout_code: CP.checkout_code, offer: CP.offer, price_cash_brl: "197,00" })), /not_a_kit/, "[P18C.D1] assinatura nunca entra");
+  assert.throws(bad((d) => { d.products[0].offer = "outra123"; }), /diverges_from_closed_list/, "[P18C.D1] oferta divergente da lista fechada");
+  assert.throws(bad((d) => { d.products[0].checkout_code = "Z107979716H"; }), /diverges_from_closed_list/, "[P18C.D1] código divergente da lista fechada");
+  assert.throws(bad((d) => { d.products[0].price_cash_brl = "97"; }), /price/, "[P18C.D1] preço sem centavos");
+  assert.throws(bad((d) => { d.products[1].slug = d.products[0].slug; }), /entry/, "[P18C.D1] produto repetido");
+  assert.throws(bad((d) => { d.products[0].slug = "kit-inventado"; }), /unknown_slug/, "[P18C.D1] produto fora da lista");
+  assert.throws(bad((d) => { d.scope = "everything"; }), /scope/, "[P18C.D1] escopo diferente");
+  assert.throws(bad((d) => { delete d.decision.record; }), /decision/, "[P18C.D1] decisão sem registro");
+  assert.throws(bad((d) => { d.products = []; }), /products/, "[P18C.D1] lista vazia");
+});
+
+test("P18C.D2: preço à vista do checkout real ('Ou R$ 97,00 à vista') é lido; parcelas não contam", () => {
+  const real = "zevanory ia na prática autor: a. renan alves moreira bitu ltda 12 x de r$ 10,03 * ou r$ 97,00 à vista 1 x de r$ 97,00 total de r$ 120,36";
+  assert.deepEqual(cashPrices(real), ["97,00"], "[P18C.D2] preço à vista");
+  assert.deepEqual(cashPrices("ou r$ 1.247,00 à vista"), ["1247,00"], "[P18C.D2] milhar");
+  assert.deepEqual(cashPrices("12 x de r$ 10,03 total de r$ 120,36"), [], "[P18C.D2] sem à vista não há preço");
+  assert.deepEqual(cashPrices("ou r$ 97,00 à vista ... ou r$ 87,00 à vista").length, 2, "[P18C.D2] dois preços distintos");
+});
+
+test("P18C.D3: live no estado autorizado (5 kits abertos pelo preço decidido, site pausado, Conteúdo Pronto fechado) passa", async () => {
+  const f = liveFake({ checkout: authorizedCheckout });
+  const r = await runLive({ allow, direct, fetchImpl: f });
+  assert.equal(r.verdict, PASS, "[P18C.D3] estado autorizado: " + JSON.stringify(r.results.filter((x) => x.verdict === FAIL)));
+  assert.equal(r.counts.total, 12, "[P18C.D3] 6 rotas + 6 checkouts");
+  assert.equal(r.results.filter((x) => x.reason === "open_authorized_direct_hotmart").length, 5, "[P18C.D3] os 5 kits pelo motivo autorizado");
+  assert.equal(r.results.find((x) => x.slug === CP.slug && x.source === "live:checkout").reason, "closed_as_expected", "[P18C.D3] Conteúdo Pronto segue fechado");
+  assert.equal(r.results.filter((x) => x.source === "live:site_route" && x.verdict === PASS).length, 6, "[P18C.D3] rotas do site pausadas");
+  assert.deepEqual(r.direct_authorization.products.sort(), KITS.map((x) => x.slug).sort(), "[P18C.D3] decisão registrada no relatório");
+  assert.ok(f.calls.every((c) => c.method === "GET"), "[P18C.D3] só GET");
+  // Sem a decisão carregada, o mesmo estado é a reprovação antiga (o monitor não ficou cego).
+  const r0 = await runLive({ allow, fetchImpl: liveFake({ checkout: authorizedCheckout }) });
+  assert.equal(r0.results.filter((x) => x.reason === "hotmart_open_while_locked").length, 5, "[P18C.D3] sem decisão: abertura com a trava fechada");
+});
+
+test("P18C.D4: desvios reais continuam reprovando no estado autorizado", async () => {
+  const one = async (slug, body) => {
+    const r = await runLive({ allow, direct, fetchImpl: liveFake({ checkout: (u) => (slugOfUrl(u) === slug ? [200, null, body] : authorizedCheckout(u)) }) });
+    return r.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]);
+  };
+  assert.deepEqual(await one("lucro-e-caixa", openKit("lucro-e-caixa", "97,00")), [["lucro-e-caixa", "authorized_direct_price_mismatch:97,00"]], "[P18C.D4] preço diferente do decidido");
+  assert.deepEqual(await one("ia-na-pratica", productFixture("ia-na-pratica", "hotmart-open-ok.html")), [["ia-na-pratica", "authorized_direct_price_unverified"]], "[P18C.D4] preço ilegível");
+  assert.deepEqual(await one("ia-na-pratica", openKit("ia-na-pratica") + "<p>Ou R$ 9,70 à vista</p>"), [["ia-na-pratica", "authorized_direct_price_ambiguous:97,00|9,70"]], "[P18C.D4] dois preços");
+  assert.deepEqual(await one(CP.slug, withPrice(productFixture(CP.slug, "hotmart-open-ok.html"), "197,00")), [[CP.slug, "hotmart_open_while_locked"]], "[P18C.D4] Conteúdo Pronto aberto (fora da decisão)");
+  assert.deepEqual(await one("negocio-completo", closedOf("negocio-completo")), [["negocio-completo", "authorized_direct_open_but_closed"]], "[P18C.D4] kit autorizado fechado é desvio do estado decidido");
+  const wrongProducer = withPrice(FX("hotmart-open-wrong-producer.html"), "97,00");
+  const wp = await one("ia-na-pratica", wrongProducer);
+  assert.deepEqual(wp.map((x) => x[0]), ["ia-na-pratica"], "[P18C.D4] produtor divergente");
+  assert.match(String(wp[0]?.[1]), /mismatch|forbidden|absent/, "[P18C.D4] motivo de identidade");
+  const wd = await one("ia-na-pratica", withPrice(FX("hotmart-open-wrong-product.html"), "97,00"));
+  assert.match(String(wd[0]?.[1]), /product_id_mismatch/, "[P18C.D4] produto divergente");
+  // Rota do site com link de compra: a decisão NÃO abre a vitrine.
+  const h = liveFake({ site: (u) => (u.endsWith("/hotmart/combo-ia-vendas") ? [200, null, FX("site-hotmart-open.html")] : [200, null, FX("site-hotmart-paused.html")]), checkout: authorizedCheckout });
+  const r = await runLive({ allow, direct, fetchImpl: h });
+  assert.deepEqual(r.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [["combo-ia-vendas", "site_route_checkout_while_locked"]], "[P18C.D4] vitrine continua fechada");
+});
+
+test("P18C.D5: a decisão só vale com a trava completa fechada e o canal Hotmart do site fechado", async () => {
+  const k = KITS[0];
+  assert.equal(directEntry(direct, k, "globally-blocked", false)?.slug, k.slug, "[P18C.D5] trava fechada + canal fechado");
+  assert.equal(directEntry(direct, k, "enabled", false), null, "[P18C.D5] trava aberta: regra normal");
+  assert.equal(directEntry(direct, k, null, false), null, "[P18C.D5] trava desconhecida: sem exceção");
+  assert.equal(directEntry(direct, k, "globally-blocked", true), null, "[P18C.D5] canal do site aberto: regra do canal");
+  assert.equal(directEntry(direct, CP, "globally-blocked", false), null, "[P18C.D5] assinatura nunca");
+  assert.equal(directEntry(null, k, "globally-blocked", false), null, "[P18C.D5] sem decisão carregada");
+  // Trava aberta com um kit fechado: motivo da regra normal, nunca o da exceção.
+  const site = (u) => { const p = allow.products.find((x) => u.endsWith(x.site_route)); const href = `https://pay.hotmart.com/${p.checkout_code}?off=${p.offer}&src=site`;
+    return p.kind === "subscription" ? [302, href, ""] : [200, null, `<a href="${href.replace(/&/g, "&amp;")}">Comprar</a>`]; };
+  const en = await runLive({ allow, direct, fetchImpl: liveFake({ release: [200, '{"sales_mode":"enabled"}'], site, checkout: (u) => [200, null, slugOfUrl(u) === k.slug ? closedOf(k.slug) : productFixture(slugOfUrl(u), "hotmart-open-ok.html")] }) });
+  assert.deepEqual(en.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [[k.slug, "hotmart_closed_while_enabled"]], "[P18C.D5] trava aberta segue a regra normal");
+  // Canal do site aberto para os kits: regra do canal (sem exigir preço).
+  const kitSite = (u) => { const p = allow.products.find((x) => u.endsWith(x.site_route)); if (p.kind !== "kit") return [200, null, FX("site-hotmart-paused.html")];
+    const href = `https://pay.hotmart.com/${p.checkout_code}?off=${p.offer}&src=site`; return [200, null, `<a href="${href.replace(/&/g, "&amp;")}">Comprar</a>`]; };
+  const ch = await runLive({ allow, direct, fetchImpl: liveFake({ site: kitSite, hotmart: [200, '{"open":true,"products":["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"]}'],
+    checkout: (u) => [200, null, slugOfUrl(u) === CP.slug ? closedOf(CP.slug) : productFixture(slugOfUrl(u), "hotmart-open-ok.html")] }) });
+  assert.equal(ch.verdict, PASS, "[P18C.D5] canal aberto: " + JSON.stringify(ch.results.filter((x) => x.verdict === FAIL)));
+  // Trava ilegível: tudo FAIL, a exceção não salva ninguém.
+  const un = await runLive({ allow, direct, fetchImpl: liveFake({ release: "throw", checkout: authorizedCheckout }) });
+  assert.equal(un.counts.fail, un.counts.total, "[P18C.D5] trava fora do ar reprova tudo");
+});
+
+test("P18C.D6: modo offline confere o preço da decisão contra o catálogo oficial", () => {
+  const ok = offlineTree(() => {});
+  assert.equal(ok.results.filter((x) => x.reason === "direct_price_matches_catalog").length, 5, "[P18C.D6] 5 preços iguais ao catálogo");
+  const div = offlineTree((d) => { const f = join(d, "data/p18-hotmart-direct-authorization.json"); writeFileSync(f, readTextNormalized(f).replace('"147,00"', '"117,00"')); });
+  assert.deepEqual(div.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [["lucro-e-caixa", "direct_price_diverges_from_catalog:147,00"]], "[P18C.D6] preço divergente do catálogo");
+  assert.equal(decideDirectCheckout({ state: "open" }, "ou r$ 97,00 à vista", { price_cash_brl: "97,00" }).verdict, PASS, "[P18C.D6] decisão unitária");
 });
