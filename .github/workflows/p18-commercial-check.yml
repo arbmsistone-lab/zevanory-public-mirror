@@ -37,7 +37,6 @@ on:
 
 permissions:
   contents: read
-  actions: read  # prazo da evidência: lê o histórico deste workflow (somente leitura)
 
 concurrency:
   group: p18-commercial-check-${{ github.event_name }}-${{ github.ref }}
@@ -89,6 +88,9 @@ jobs:
     name: p18-commercial / live (somente GET)
     runs-on: ubuntu-24.04  # fixado 22/11/2026: ubuntu-latest = 26.04 quebra Playwright/Chromium e semgrep (py3.14)
     timeout-minutes: 12
+    permissions:
+      contents: read
+      actions: read  # só este job: lê o histórico do próprio workflow para o prazo da evidência
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,16 +114,27 @@ jobs:
           # Zero FAIL lines is the green case: grep exits 1 then, which must not fail the step (exit code comes from node).
           { grep -E '^FAIL ' "$RUNNER_TEMP/live.txt" || true; } | head -20 | while read -r l; do echo "::error title=P18_COMMERCIAL_FAIL::$l"; done
           exit "$code"
-      - name: Prazo da evidência (2 falhas seguidas = alerta; 24 h sem PASS = expirada)
+      - name: P18 prova BRL oficial v1
+        # Marcador verificável de PASS OFICIAL EM BRL (lido pelo prazo das execuções seguintes): só roda com o live verde
+        # e só passa com a leitura de São Paulo válida e o veredito PASS com br=ok.
+        if: ${{ success() && github.ref == 'refs/heads/gh-pages' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -qE '^P18_BR_READ ok=true http=200 x-sb-edge-region=sa-east-1 region=sa-east-1 .* verifier_match=true$' "$RUNNER_TEMP/live.txt"
+          grep -qE '^P18_COMMERCIAL mode=live verdict=PASS .* br=ok$' "$RUNNER_TEMP/live.txt"
+          echo "P18_PROVA_BRL_OFICIAL=PASS"
+      - name: Prazo da evidência (2 falhas seguidas = alerta; 24 h sem PASS oficial em BRL = expirada)
         if: ${{ always() && github.ref == 'refs/heads/gh-pages' }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e -uo pipefail
-          verdict=$(grep -oE '^P18_COMMERCIAL mode=live verdict=[A-Z]+' "$RUNNER_TEMP/live.txt" | sed 's/.*verdict=//')
-          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/p18-commercial-check.yml/runs?branch=gh-pages&status=completed&per_page=60" > "$RUNNER_TEMP/runs.json" || echo '{"workflow_runs":[]}' > "$RUNNER_TEMP/runs.json"
-          node scripts/b0/p18-live-br.mjs --deadline "$RUNNER_TEMP/runs.json" --current "${verdict:-FAIL}"
+          cur=FAIL
+          if grep -qE '^P18_BR_READ ok=true http=200 x-sb-edge-region=sa-east-1 region=sa-east-1 .* verifier_match=true$' "$RUNNER_TEMP/live.txt" 2>/dev/null \
+             && grep -qE '^P18_COMMERCIAL mode=live verdict=PASS .* br=ok$' "$RUNNER_TEMP/live.txt"; then cur=PASS; fi
+          node scripts/b0/p18-live-br.mjs --deadline --current "$cur"
       - name: Relatório
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
