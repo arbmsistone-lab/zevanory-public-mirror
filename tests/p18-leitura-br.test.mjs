@@ -1,9 +1,9 @@
 // P18 — leitura a partir de São Paulo (Edge Function "p18-leitura-br"). Sem rede: fetch falso com fixtures.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, writeFileSync, copyFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, writeFileSync, copyFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { leituraBr, closedByRedirect, LEITURA_SCHEMA } from "../scripts/p18/edge/leitura-br.mjs";
@@ -88,9 +88,18 @@ test("P18BR.4: resposta só com os campos da prova (sem HTML, sem cookie, sem da
 
 test("P18BR.5: função publicada = saída exata do gerador (regras do verificador sem edição); servidor só GET sem parâmetros", async () => {
   const { out, meta } = build();
-  assert.equal(readFileSync(OUT, "utf8"), out, "[P18BR.5] index.ts versionado = gerador (rode node scripts/p18/edge/build.mjs)");
+  assert.equal(readFileSync(OUT, "utf8").replace(/\r\n?/g, "\n"), out, "[P18BR.5] index.ts versionado = gerador (rode node scripts/p18/edge/build.mjs)");
   assert.ok(!/^\s*import\s/m.test(out) && !/from "node:/.test(out), "[P18BR.5] arquivo único, sem imports");
   assert.match(out, new RegExp("verifier_sha256=" + meta.verifier_sha256));
+  // Portabilidade: com fontes em CRLF (Windows), o gerador produz o MESMO arquivo e os mesmos hashes.
+  const crlf = mkdtempSync(join(tmpdir(), "p18br-crlf-"));
+  for (const f of ["scripts/b0/p18-commercial.mjs", "data/p18-commercial-allowlist.json", "data/p18-hotmart-direct-authorization.json", "scripts/p18/edge/leitura-br.mjs"]) {
+    mkdirSync(join(crlf, dirname(f)), { recursive: true }); writeFileSync(join(crlf, f), readFileSync(f, "utf8").replace(/\r?\n/g, "\r\n"));
+  }
+  assert.equal(build(crlf).out, out, "[P18BR.5] fontes em CRLF geram o mesmo arquivo");
+  // Gate PED (arquivos .ts): nenhuma linha fora de comentário com padrão de cor #rgb/#rrggbb.
+  const hexLines = out.split("\n").filter((l) => /#[0-9a-fA-F]{3,8}\b/.test(l) && !l.includes("--") && !/^\s*(\/\/|\/\*|\*)/.test(l));
+  assert.deepEqual(hexLines, [], "[P18BR.5] nada que o PED leia como cor fixa");
   // Roda o arquivo gerado com um Deno falso: GET → 200 JSON; POST → 405; parâmetro → 400.
   const d = mkdtempSync(join(tmpdir(), "p18br-")); copyFileSync(OUT, join(d, "fn.mjs"));
   let handler = null;
