@@ -99,6 +99,7 @@ exclude:
   - scripts
   - sitemap.xml
   - solucoes
+  - supabase
   - termos
   - tests
   - vendas-na-pratica

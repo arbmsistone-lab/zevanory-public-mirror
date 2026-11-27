@@ -18,6 +18,9 @@ on:
       - ".github/workflows/p18-commercial-check.yml"
       - "scripts/b0/p18-commercial.mjs"
       - "scripts/b0/p18-commercial-browser.mjs"
+      - "scripts/b0/p18-live-br.mjs"
+      - "data/p18-leitura-br-endpoint.json"
+      - "tests/p18-live-br.test.mjs"
       - "data/p18-commercial-allowlist.json"
       - "data/p18-hotmart-direct-authorization.json"
       - "data/products.json"
@@ -58,10 +61,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/p18-commercial.test.mjs | tee /tmp/t.txt
+          node --test tests/p18-commercial.test.mjs tests/p18-live-br.test.mjs | tee /tmp/t.txt
           # contagem vem do manifesto da suíte (fonte única; #1068 quebrou com "18" fixo aqui e 20 no manifesto)
-          n=$(awk '$1=="tests/p18-commercial.test.mjs"{print $2}' tests/node-suite.manifest)
-          [[ "$n" =~ ^[1-9][0-9]*$ ]] || { echo "::error::tests/p18-commercial.test.mjs sem contagem válida no manifesto"; exit 1; }
+          n=$(awk '$1=="tests/p18-commercial.test.mjs"||$1=="tests/p18-live-br.test.mjs"{s+=$2;c++} END{if(c==2)print s}' tests/node-suite.manifest)
+          [[ "$n" =~ ^[1-9][0-9]*$ ]] || { echo "::error::p18-commercial/p18-live-br sem contagem válida no manifesto"; exit 1; }
           for l in "# tests $n" "# pass $n" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
       - name: Modo offline (sem rede)
         shell: bash
@@ -85,6 +88,9 @@ jobs:
     name: p18-commercial / live (somente GET)
     runs-on: ubuntu-24.04  # fixado 22/11/2026: ubuntu-latest = 26.04 quebra Playwright/Chromium e semgrep (py3.14)
     timeout-minutes: 12
+    permissions:
+      contents: read
+      actions: read  # só este job: lê o histórico do próprio workflow para o prazo da evidência
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,12 +108,33 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          node scripts/b0/p18-commercial.mjs --mode live --browser --out "$RUNNER_TEMP/p18-commercial.json" | tee "$RUNNER_TEMP/live.txt"
+          node scripts/b0/p18-live-br.mjs --browser --out "$RUNNER_TEMP/p18-commercial.json" | tee "$RUNNER_TEMP/live.txt"
           code=${PIPESTATUS[0]}
           echo "::notice title=P18_COMMERCIAL::$(grep -E '^P18_COMMERCIAL ' "$RUNNER_TEMP/live.txt")"
           # Zero FAIL lines is the green case: grep exits 1 then, which must not fail the step (exit code comes from node).
           { grep -E '^FAIL ' "$RUNNER_TEMP/live.txt" || true; } | head -20 | while read -r l; do echo "::error title=P18_COMMERCIAL_FAIL::$l"; done
           exit "$code"
+      - name: P18 prova BRL oficial v1
+        # Marcador verificável de PASS OFICIAL EM BRL (lido pelo prazo das execuções seguintes): só roda com o live verde
+        # e só passa com a leitura de São Paulo válida e o veredito PASS com br=ok.
+        if: ${{ success() && github.ref == 'refs/heads/gh-pages' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -qE '^P18_BR_READ ok=true http=200 x-sb-edge-region=sa-east-1 region=sa-east-1 .* verifier_match=true$' "$RUNNER_TEMP/live.txt"
+          grep -qE '^P18_COMMERCIAL mode=live verdict=PASS .* br=ok$' "$RUNNER_TEMP/live.txt"
+          echo "P18_PROVA_BRL_OFICIAL=PASS"
+      - name: Prazo da evidência (2 falhas seguidas = alerta; 24 h sem PASS oficial em BRL = expirada)
+        if: ${{ always() && github.ref == 'refs/heads/gh-pages' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e -uo pipefail
+          cur=FAIL
+          if grep -qE '^P18_BR_READ ok=true http=200 x-sb-edge-region=sa-east-1 region=sa-east-1 .* verifier_match=true$' "$RUNNER_TEMP/live.txt" 2>/dev/null \
+             && grep -qE '^P18_COMMERCIAL mode=live verdict=PASS .* br=ok$' "$RUNNER_TEMP/live.txt"; then cur=PASS; fi
+          node scripts/b0/p18-live-br.mjs --deadline --current "$cur"
       - name: Relatório
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
