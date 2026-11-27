@@ -528,7 +528,9 @@ window.addEventListener('message',e=>{if(e.origin!=='${PANEL_ORIGIN}'||e.source!
 // Painel (27/11): o chat fica sempre aberto na coluna do painel, sem PIN. O painel renova o passe a cada 2 min (troca
 // por uma sessão nova de até 5 min) e, ao sair do painel, manda encerrar: o logout revoga a sessão no servidor.
 // Só a origem do painel e a janela-mãe são aceitas. Dentro do painel o botão Sair do chat some (sair do painel encerra).
-let renewing=false;async function renovar(t){if(ended||renewing)return;renewing=true;try{const r=await fetch('/api/admin/owner-chat/panel-session',{method:'POST',headers:H,body:JSON.stringify(t),signal:ctl.signal});if(r.status===401&&!ended)st.textContent='sessão do painel acabou';}catch{}finally{renewing=false;}}
+// Renovações em fila única: um passe por vez, sempre com o cookie já atualizado pela troca anterior; se chegar outro
+// passe durante a troca, só o mais recente é usado depois (nunca duas trocas simultâneas com o mesmo cookie antigo).
+let renewing=false,nextTicket=null;async function renovar(t){if(ended)return;if(renewing){nextTicket=t;return;}renewing=true;try{const r=await fetch('/api/admin/owner-chat/panel-session',{method:'POST',headers:H,body:JSON.stringify(t),credentials:'same-origin',signal:ctl.signal});if(r.status===401&&!ended)st.textContent='sessão do painel acabou';}catch{}finally{renewing=false;if(nextTicket&&!ended){const n=nextTicket;nextTicket=null;renovar(n);}}}
 window.addEventListener('message',e=>{if(e.origin!=='${PANEL_ORIGIN}'||e.source!==window.parent||!e.data)return;if(e.data.type==='zv-owner-chat:ticket'&&e.data.ticket)renovar(e.data.ticket);else if(e.data.type==='zv-owner-chat:logout')sair();else if(e.data.type==='zv-owner-chat:theme')document.documentElement.dataset.theme=e.data.theme==='light'?'light':'dark';});
 if(window.parent!==window){sairB.hidden=true;window.parent.postMessage({type:'zv-owner-chat:ready'},'${PANEL_ORIGIN}');}
 if(endOn()){sair();}else{document.addEventListener('visibilitychange',poll);poll();iv=setInterval(poll,5000);}})();</script></body></html>`;

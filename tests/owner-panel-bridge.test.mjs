@@ -133,6 +133,7 @@ test("[BR8] página do chat: aceita renovação e encerramento só da origem do 
   const s = chat.OWNER_CHAT_PAGE; const js = s.slice(s.indexOf("<script>") + 8, s.lastIndexOf("</script>"));
   assert.match(js, /if\(e\.origin!=='https:\/\/controle\.zevanory\.api\.br'\|\|e\.source!==window\.parent\|\|!e\.data\)return;if\(e\.data\.type==='zv-owner-chat:ticket'&&e\.data\.ticket\)renovar\(e\.data\.ticket\);else if\(e\.data\.type==='zv-owner-chat:logout'\)sair\(\);/, "[BR8] origem fixa");
   assert.match(js, /fetch\('\/api\/admin\/owner-chat\/panel-session'/, "[BR8] renovação pela rota da ponte");
+  assert.match(js, /if\(renewing\)\{nextTicket=t;return;\}renewing=true;/, "[BR8] uma renovação por vez");
   assert.match(js, /if\(window\.parent!==window\)\{sairB\.hidden=true;/, "[BR8] Sair escondido no painel");
   assert.doesNotThrow(() => new Function(js));
 });
