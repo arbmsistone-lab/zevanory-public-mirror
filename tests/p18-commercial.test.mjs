@@ -11,6 +11,7 @@ import {
   loadAllowlist, validateAllowlist, extractPurchaseLinks, checkLinkShape, readSalesMode, classifyCheckout, decideCheckout,
   decideSiteRoute, safeGet, safeInit, assertSafeInit, runOffline, runLive, buildReport, workerCheckoutLinks, PASS, FAIL, MAX_REDIRECTS,
   loadDirectAuthorization, validateDirectAuthorization, cashPrices, directEntry, decideDirectCheckout,
+  decodeNuxtData, structuredOfferPrice, structuredFromSources, structuredDiag,
 } from "../scripts/b0/p18-commercial.mjs";
 
 const FX = (n) => readTextNormalized(new URL("./fixtures/p18-commercial/" + n, import.meta.url));
@@ -348,7 +349,36 @@ const KITS = allow.products.filter((p) => p.kind === "kit");
 const CP = allow.products.find((p) => p.kind === "subscription");
 const priceOf = (slug) => direct.products.find((x) => x.slug === slug).price_cash_brl;
 const withPrice = (html, price) => html.replace("</section>", `<p>12 x de R$ 10,03 *</p><p>Ou R$ ${price} à vista</p></section>`);
-const openKit = (slug, price = priceOf(slug)) => withPrice(productFixture(slug, "hotmart-open-ok.html"), price);
+// Dado estruturado do checkout da Hotmart (Nuxt/devalue), na MESMA forma do checkout real lido em 27/11/2026:
+// raiz ["ShallowReactive",1]; produto {id, offer:{key, paymentMethods:[CREDIT_CARD{offer, amount, installments[number 1..]},
+// PIX{offer, amount}]}} presente em data.<chave>.data.products e em pinia.load.products; dinheiro {currency, label, value}.
+function devalue(root) {
+  const a = [["ShallowReactive", 1]], memo = new Map();
+  const enc = (v) => {
+    if (v === undefined) return -1;
+    if (v !== null && typeof v === "object" && memo.has(v)) return memo.get(v);
+    const i = a.length; a.push(null);
+    if (v !== null && typeof v === "object") memo.set(v, i);
+    if (Array.isArray(v)) a[i] = v.map(enc);
+    else if (v !== null && typeof v === "object") { const o = {}; for (const k of Object.keys(v)) o[k] = enc(v[k]); a[i] = o; }
+    else a[i] = v;
+    return i;
+  };
+  enc(root); return a;
+}
+const brl = (s) => Number(String(s).replace(",", "."));
+function nuxtProduct(slug, { price = priceOf(slug), pix = price, currency = "BRL", offer = P(slug).offer, id = P(slug).hotmart_product_id, pmOffer = offer } = {}) {
+  const m = (v, label = null) => ({ currency, label, value: brl(v) });
+  return { id: Number(id), name: P(slug).name, offer: { key: offer, paymentMethods: [
+    { type: "CREDIT_CARD", offer: pmOffer, amount: m(price, { key: "label_checkout_installments_other", parameters: ["12"] }),
+      installments: [{ number: 1, amount: m(price, { key: "label_checkout_installments", parameters: ["1"] }), fullAmount: m(price) },
+        { number: 2, amount: m("51,05"), fullAmount: m("102,10"), interest: m("5,10") }] },
+    { type: "PIX", offer: pmOffer, amount: m(pix) }] }, spreads: [{ currency, spreadRate: 0 }] };
+}
+const nuxtScript = (product, { pinia = product } = {}) => `<script type="application/json" data-nuxt-data="nuxt-app" data-ssr="true" id="__NUXT_DATA__">${
+  JSON.stringify(devalue({ data: { $fchk: { status: 200, data: { products: [product] } } }, state: {}, pinia: { load: { products: [pinia] } } }))}</script>`;
+const withNuxt = (html, slug, opts) => html + "\n" + nuxtScript(nuxtProduct(slug, opts));
+const openKit = (slug, price = priceOf(slug)) => withNuxt(withPrice(productFixture(slug, "hotmart-open-ok.html"), price), slug, { price });
 const closedOf = (slug) => productFixture(slug, "hotmart-closed-049.html");
 const slugOfUrl = (u) => allow.products.find((p) => u.includes(p.checkout_code)).slug;
 // Estado autorizado: kits abertos com o preço certo, Conteúdo Pronto fechado, rotas do site pausadas.
@@ -443,16 +473,80 @@ test("P18C.D6: modo offline confere o preço da decisão contra o catálogo ofic
   assert.equal(ok.results.filter((x) => x.reason === "direct_price_matches_catalog").length, 5, "[P18C.D6] 5 preços iguais ao catálogo");
   const div = offlineTree((d) => { const f = join(d, "data/p18-hotmart-direct-authorization.json"); writeFileSync(f, readTextNormalized(f).replace('"147,00"', '"117,00"')); });
   assert.deepEqual(div.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [["lucro-e-caixa", "direct_price_diverges_from_catalog:147,00"]], "[P18C.D6] preço divergente do catálogo");
-  assert.equal(decideDirectCheckout({ state: "open" }, "ou r$ 97,00 à vista", { price_cash_brl: "97,00" }).verdict, PASS, "[P18C.D6] decisão unitária");
+  assert.equal(decideDirectCheckout({ state: "open" }, "ou r$ 97,00 à vista", { price_cash_brl: "97,00" }, { state: "ok", value_brl: "97,00" }).verdict, PASS, "[P18C.D6] decisão unitária");
+  assert.equal(decideDirectCheckout({ state: "open" }, "ou r$ 97,00 à vista", { price_cash_brl: "97,00" }).reason, "authorized_direct_price_unverified", "[P18C.D6] texto visível sozinho não prova a oferta");
 });
 
-test("P18C.D7: preço lido do HTML inicial do servidor quando a página redesenhada não o mostra; scripts nunca contam", async () => {
+test("P18C.D7: preço lido do HTML bruto do servidor quando a página redesenhada não o mostra; texto em script nunca conta", async () => {
   const kits = new Set(KITS.map((k) => k.slug));
-  const render = (ssrFor) => async (u) => { const s = slugOfUrl(u); return kits.has(s) ? { status: 200, body: productFixture(s, "hotmart-open-ok.html"), ssr: ssrFor(s) } : { status: 200, body: closedOf(s) }; };
-  const ok = await runLive({ allow, direct, fetchImpl: liveFake(), renderCheckout: render((s) => `<div>Ou R$ ${priceOf(s)} à vista</div>`) });
+  // body = página redesenhada sem preço e sem dado estruturado; ssr = texto do HTML do servidor sem scripts; ssr_raw = HTML bruto.
+  const render = (rawFor, ssrFor = () => "") => async (u) => { const s = slugOfUrl(u); return kits.has(s) ? { status: 200, body: productFixture(s, "hotmart-open-ok.html"), ssr: ssrFor(s), ssr_raw: rawFor(s) } : { status: 200, body: closedOf(s) }; };
+  const ok = await runLive({ allow, direct, fetchImpl: liveFake(), renderCheckout: render((s) => nuxtScript(nuxtProduct(s))) });
   assert.equal(ok.verdict, PASS, "[P18C.D7] preço do HTML do servidor: " + JSON.stringify(ok.results.filter((x) => x.verdict === FAIL)));
-  const inScript = await runLive({ allow, direct, fetchImpl: liveFake(), renderCheckout: render((s) => `<script>var t="Ou R$ ${priceOf(s)} à vista"</script>`) });
-  assert.equal(inScript.results.filter((x) => x.reason === "authorized_direct_price_unverified").length, 5, "[P18C.D7] preço só dentro de script não conta");
-  const wrong = await runLive({ allow, direct, fetchImpl: liveFake(), renderCheckout: render((s) => `<div>Ou R$ ${s === "ia-na-pratica" ? "87,00" : priceOf(s)} à vista</div>`) });
+  assert.deepEqual(ok.results.filter((x) => x.structured).map((x) => [x.structured.state, x.structured.currency, x.structured.value_brl === x.price_expected]), KITS.map(() => ["ok", "BRL", true]), "[P18C.D7] relatório traz a leitura estruturada");
+  const inScript = await runLive({ allow, direct, fetchImpl: liveFake(), renderCheckout: render((s) => nuxtScript(nuxtProduct(s)), () => `<script>var t="Ou R$ 87,00 à vista"</script>`) });
+  assert.equal(inScript.verdict, PASS, "[P18C.D7] preço só dentro de script não conta: " + JSON.stringify(inScript.results.filter((x) => x.verdict === FAIL)));
+  const visible = await runLive({ allow, direct, fetchImpl: liveFake(), renderCheckout: render((s) => nuxtScript(nuxtProduct(s)), (s) => (s === "ia-na-pratica" ? "<div>Ou R$ 87,00 à vista</div>" : "")) });
+  assert.deepEqual(visible.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [["ia-na-pratica", "authorized_direct_price_divergent:visible:87,00"]], "[P18C.D7] preço visível do servidor diferente do estruturado reprova");
+  const wrong = await runLive({ allow, direct, fetchImpl: liveFake(), renderCheckout: render((s) => nuxtScript(nuxtProduct(s, s === "ia-na-pratica" ? { price: "87,00" } : {}))) });
   assert.deepEqual(wrong.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [["ia-na-pratica", "authorized_direct_price_mismatch:87,00"]], "[P18C.D7] preço errado no HTML do servidor reprova");
+});
+
+test("P18C.D8: o preço pertence à oferta certa — produto e oferta exatos, BRL, sem valor ausente, divergente ou ambíguo", async () => {
+  const IAE = direct.products.find((x) => x.slug === "ia-na-pratica");
+  const rd = (html) => structuredOfferPrice(html, IAE);
+  const ok = rd(nuxtScript(nuxtProduct("ia-na-pratica")));
+  assert.deepEqual([ok.state, ok.product_id, ok.offer, ok.currency, ok.value_brl, ok.quotes], ["ok", "8704733", "g9knd34r", "BRL", "97,00", 3], "[P18C.D8] leitura da forma real");
+  assert.equal(rd(nuxtScript(nuxtProduct("ia-na-pratica"), { pinia: structuredClone(nuxtProduct("ia-na-pratica")) })).state, "ok", "[P18C.D8] cópia idêntica no estado conta uma vez");
+  assert.equal(rd("<html><body>Ou R$ 97,00 à vista</body></html>").state, "absent", "[P18C.D8] sem dado estruturado = ausente");
+  assert.equal(rd(nuxtScript({ nada: 1 })).state, "absent", "[P18C.D8] dado sem produto com oferta = ausente");
+  assert.equal(rd('<script id="__NUXT_DATA__" type="application/json">[1,{</script>').state, "invalid", "[P18C.D8] JSON quebrado");
+  assert.equal(rd('<script id="__NUXT_DATA__" type="application/json">[["Funcao",1],2]</script>').state, "invalid", "[P18C.D8] tipo desconhecido do devalue");
+  assert.equal(rd('<script id="__NUXT_DATA__" type="application/json">[{"a":99}]</script>').state, "invalid", "[P18C.D8] referência fora do array");
+  assert.deepEqual(decodeNuxtData('[["Reactive",1],{"a":2,"b":-1},[3],"x"]'), { a: ["x"], b: undefined }, "[P18C.D8] decodificador devalue");
+  const offerX = rd(nuxtScript(nuxtProduct("ia-na-pratica", { offer: "outra123" })));
+  assert.deepEqual([offerX.state, offerX.detail], ["offer_mismatch", "8704733/outra123"], "[P18C.D8] oferta diferente da decidida");
+  const idX = rd(nuxtScript(nuxtProduct("ia-na-pratica", { id: "8704826" })));
+  assert.deepEqual([idX.state, idX.detail], ["offer_mismatch", "8704826/g9knd34r"], "[P18C.D8] produto diferente do decidido");
+  const pmX = rd(nuxtScript(nuxtProduct("ia-na-pratica", { pmOffer: "outra123" })));
+  assert.deepEqual([pmX.state, pmX.detail], ["offer_mismatch", "payment_method_offer:outra123"], "[P18C.D8] forma de pagamento de outra oferta");
+  const usd = rd(nuxtScript(nuxtProduct("ia-na-pratica", { currency: "USD" })));
+  assert.deepEqual([usd.state, usd.detail], ["currency", "USD"], "[P18C.D8] moeda diferente de BRL");
+  const div = rd(nuxtScript(nuxtProduct("ia-na-pratica", { pix: "87,00" })));
+  assert.deepEqual([div.state, div.detail], ["divergent", "87,00|97,00"], "[P18C.D8] valores à vista divergentes na mesma oferta");
+  const two = rd(nuxtScript(nuxtProduct("ia-na-pratica")) + nuxtScript(nuxtProduct("ia-na-pratica", { price: "87,00" })));
+  assert.deepEqual([two.state, two.detail], ["ambiguous", "nuxt_data_scripts:2"], "[P18C.D8] dois blocos de dados");
+  const same = rd(nuxtScript(nuxtProduct("ia-na-pratica"), { pinia: nuxtProduct("ia-na-pratica", { price: "87,00", pix: "87,00" }) }));
+  assert.deepEqual([same.state, same.detail], ["ambiguous", "same_offer_different_data:2"], "[P18C.D8] mesma oferta com dados diferentes");
+  const src = structuredFromSources([nuxtScript(nuxtProduct("ia-na-pratica")), nuxtScript(nuxtProduct("ia-na-pratica", { price: "87,00", pix: "87,00" }))], IAE);
+  assert.deepEqual([src.state, src.detail], ["divergent", "sources:97,00|87,00"], "[P18C.D8] HTML do servidor e página divergem");
+  assert.equal(structuredFromSources([undefined, ""], IAE).state, "absent", "[P18C.D8] nenhuma fonte");
+  // Motivo do relatório por estado (ao vivo, mesmo GET).
+  const one = async (raw) => (await runLive({ allow, direct, fetchImpl: liveFake(), renderCheckout: async (u) => { const s = slugOfUrl(u);
+    return s === CP.slug ? { status: 200, body: closedOf(s) } : { status: 200, body: productFixture(s, "hotmart-open-ok.html"), ssr: "", ssr_raw: s === "ia-na-pratica" ? raw : nuxtScript(nuxtProduct(s)) }; } }))
+    .results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]);
+  assert.deepEqual(await one(nuxtScript(nuxtProduct("ia-na-pratica", { currency: "USD" }))), [["ia-na-pratica", "authorized_direct_price_currency:USD"]], "[P18C.D8] ao vivo: moeda");
+  assert.deepEqual(await one(nuxtScript(nuxtProduct("ia-na-pratica", { offer: "outra123" }))), [["ia-na-pratica", "authorized_direct_offer_mismatch:8704733/outra123"]], "[P18C.D8] ao vivo: oferta");
+  assert.deepEqual(await one(nuxtScript(nuxtProduct("ia-na-pratica", { pix: "87,00" }))), [["ia-na-pratica", "authorized_direct_price_divergent:87,00|97,00"]], "[P18C.D8] ao vivo: divergente");
+  assert.deepEqual(await one(""), [["ia-na-pratica", "authorized_direct_price_unverified"]], "[P18C.D8] ao vivo: ausente");
+});
+
+test("P18C.D9: com o navegador, um GET simples do mesmo link também fornece o dado estruturado; diagnóstico por fonte sem conteúdo", async () => {
+  const kits = new Set(KITS.map((k) => k.slug));
+  // Navegador sem dado estruturado (como no runner do CI em 27/11); GET simples com o HTML do servidor.
+  const render = async (u) => { const s = slugOfUrl(u); return kits.has(s) ? { status: 200, body: productFixture(s, "hotmart-open-ok.html"), ssr: "", ssr_raw: "" } : { status: 200, body: closedOf(s) }; };
+  const f = liveFake({ checkout: authorizedCheckout });
+  const ok = await runLive({ allow, direct, fetchImpl: f, renderCheckout: render });
+  assert.equal(ok.verdict, PASS, "[P18C.D9] GET simples supre o dado estruturado: " + JSON.stringify(ok.results.filter((x) => x.verdict === FAIL)));
+  const ia = ok.results.find((x) => x.slug === "ia-na-pratica" && x.source === "live:checkout");
+  assert.deepEqual(ia.structured_sources.map((x) => [x.src, x.nuxt_scripts, x.state]), [["ssr_raw", 0, "absent"], ["body", 0, "absent"], ["plain_get", 1, "ok"]], "[P18C.D9] diagnóstico por fonte");
+  assert.equal(ia.plain_get_status, 200, "[P18C.D9] status do GET simples");
+  assert.ok(f.calls.every((c) => c.method === "GET"), "[P18C.D9] só GET");
+  assert.equal(f.calls.filter((c) => c.url.startsWith("https://pay.hotmart.com/")).length, 5, "[P18C.D9] GET simples só nos 5 kits autorizados");
+  // GET simples com outro preço: divergência entre fontes reprova.
+  const g = liveFake({ checkout: (u) => { const s = slugOfUrl(u); return [200, null, s === "ia-na-pratica" ? openKit(s, "87,00") : authorizedCheckout(u)[2]]; } });
+  const both = async (u) => { const r = await render(u); const s = slugOfUrl(u); return kits.has(s) ? { ...r, ssr_raw: nuxtScript(nuxtProduct(s)) } : r; };
+  const dv = await runLive({ allow, direct, fetchImpl: g, renderCheckout: both });
+  assert.deepEqual(dv.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [["ia-na-pratica", "authorized_direct_price_divergent:sources:97,00|87,00"]], "[P18C.D9] GET simples divergente reprova");
+  assert.deepEqual(structuredDiag([["x", undefined]], direct.products[0]), [{ src: "x", bytes: 0, nuxt_scripts: 0, state: "absent" }], "[P18C.D9] fonte vazia");
 });

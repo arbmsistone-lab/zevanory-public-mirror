@@ -9,7 +9,8 @@ name: P18 commercial check (read-only)
 #                 mutantes causais (todos precisam morrer).
 #   schedule / workflow_dispatch: modo live no gh-pages; relatório JSON como artefato; FAIL derruba o job
 #                 (notificação de falha de workflow do GitHub). Nenhum segredo, nenhuma escrita (contents: read).
-# Orçamento por execução: 1 GET na trava + 6 GET nas rotas do site + 6 navegações GET nos checkouts Hotmart.
+# Orçamento por execução: 1 GET na trava + 1 no canal Hotmart + 6 GET nas rotas do site + 6 navegações GET nos checkouts
+#   Hotmart + 5 GET simples (sem navegador) nos checkouts dos kits autorizados, para o dado estruturado da oferta.
 on:
   pull_request:
     branches: [gh-pages]
@@ -74,7 +75,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p18_commercial.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P18_COMMERCIAL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=40 killed=40 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=51 killed=51 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"
