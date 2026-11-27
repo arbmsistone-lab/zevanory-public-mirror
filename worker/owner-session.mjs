@@ -28,7 +28,10 @@ export async function ensureSessionSchema(sql) {
   // Ação reivindicada: qual sessão a autorizou (para o logout informar ações já autorizadas ainda em andamento).
   await sql.query(`alter table zevanory_owner_chat_messages add column if not exists action_session text`, []);
   // Sessão aberta pelo PAINEL: chave do marcador de fim da sessão do painel que a originou (sha256 de "panel-sid:"+sid).
-  await sql.query(`alter table zevanory_owner_chat_sessions add column if not exists panel_end_marker text check (panel_end_marker is null or panel_end_marker ~ '^[0-9a-f]{64}$')`, []);
+  // Coluna simples (forma canônica que o restauro em banco novo replica, gate runtime_ddl): o formato (64 hex ou nulo)
+  // é garantido na única escrita, createSession (HEX64), e o valor só é comparado por igualdade com token_sha256, que
+  // tem CHECK de 64 hex na tabela; valor fora do formato nunca seria gravado.
+  await sql.query(`alter table zevanory_owner_chat_sessions add column if not exists panel_end_marker text`, []);
   ready.add(sql);
 }
 
