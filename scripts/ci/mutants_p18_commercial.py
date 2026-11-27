@@ -73,6 +73,8 @@ M = {
     "K37 identidade divergente aceita na exceção": (C, '  if (cls.state === "mismatch" || cls.state === "unverifiable") return { verdict: FAIL, reason: cls.reason };\n  if (cls.state === "closed") return { verdict: FAIL, reason: "authorized_direct',
                                                    '  if (cls.state === "unverifiable") return { verdict: FAIL, reason: cls.reason };\n  if (cls.state === "mismatch") return { verdict: PASS, reason: "x" };\n  if (cls.state === "closed") return { verdict: FAIL, reason: "authorized_direct'),
     "K38 preço offline não conferido com o catálogo": (C, '    const ok = want !== null && e.price_cash_brl === want;', '    const ok = want !== null;'),
+    "K39 HTML inicial do servidor ignorado no preço": (C, '    const priceText = searchableText(got.body || "") + " " + searchableText(String(got.ssr || "")', '    const priceText = searchableText(got.body || "") + " " + searchableText(String("")'),
+    "K40 preço dentro de script aceito": (C, 'searchableText(String(got.ssr || "").replace(/<script\\b[\\s\\S]*?<\\/script>/gi, " "));', 'searchableText(String(got.ssr || ""));'),
 }
 
 ALLOW_FILE = Path(os.environ.get("P18C_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p18_commercial_allow.json"))
