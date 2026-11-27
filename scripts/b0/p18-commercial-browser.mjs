@@ -24,12 +24,16 @@ export function makeBrowserRenderer(allow, { timeoutMs = 45_000 } = {}) {
     const page = await ctx.newPage();
     try {
       const resp = await page.goto(url, { waitUntil: "networkidle", timeout: timeoutMs }).catch(() => null);
+      // HTML inicial entregue pelo servidor no MESMO GET (sem scripts nem estilos): o checkout da Hotmart traz o preço
+      // à vista nele; depois a página o redesenha com pedidos não-GET, que este monitor bloqueia por desenho.
+      let ssr = "";
+      try { ssr = resp ? String(await resp.text()).replace(/<script\b[\s\S]*?<\/script>/gi, " ").replace(/<style\b[\s\S]*?<\/style>/gi, " ") : ""; } catch { ssr = ""; }
       await page.waitForTimeout(3000);
       const final = new URL(page.url());
       if (!allow.redirect_hosts.includes(final.hostname)) return { status: 0, error: "redirect_host_not_allowed:" + final.hostname, body: "", blocked_non_get: blocked };
       const html = await page.content();
       const text = await page.evaluate(() => document.body?.innerText || "");
-      return { status: resp ? resp.status() : 0, body: html + "\n" + text, hops: [{ url, status: resp ? resp.status() : 0 }], blocked_non_get: blocked };
+      return { status: resp ? resp.status() : 0, body: html + "\n" + text, ssr, hops: [{ url, status: resp ? resp.status() : 0 }], blocked_non_get: blocked };
     } finally { await ctx.close(); }
   };
   render.close = async () => { await browser?.close(); browser = null; };

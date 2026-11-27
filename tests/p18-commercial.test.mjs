@@ -445,3 +445,14 @@ test("P18C.D6: modo offline confere o preço da decisão contra o catálogo ofic
   assert.deepEqual(div.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [["lucro-e-caixa", "direct_price_diverges_from_catalog:147,00"]], "[P18C.D6] preço divergente do catálogo");
   assert.equal(decideDirectCheckout({ state: "open" }, "ou r$ 97,00 à vista", { price_cash_brl: "97,00" }).verdict, PASS, "[P18C.D6] decisão unitária");
 });
+
+test("P18C.D7: preço lido do HTML inicial do servidor quando a página redesenhada não o mostra; scripts nunca contam", async () => {
+  const kits = new Set(KITS.map((k) => k.slug));
+  const render = (ssrFor) => async (u) => { const s = slugOfUrl(u); return kits.has(s) ? { status: 200, body: productFixture(s, "hotmart-open-ok.html"), ssr: ssrFor(s) } : { status: 200, body: closedOf(s) }; };
+  const ok = await runLive({ allow, direct, fetchImpl: liveFake(), renderCheckout: render((s) => `<div>Ou R$ ${priceOf(s)} à vista</div>`) });
+  assert.equal(ok.verdict, PASS, "[P18C.D7] preço do HTML do servidor: " + JSON.stringify(ok.results.filter((x) => x.verdict === FAIL)));
+  const inScript = await runLive({ allow, direct, fetchImpl: liveFake(), renderCheckout: render((s) => `<script>var t="Ou R$ ${priceOf(s)} à vista"</script>`) });
+  assert.equal(inScript.results.filter((x) => x.reason === "authorized_direct_price_unverified").length, 5, "[P18C.D7] preço só dentro de script não conta");
+  const wrong = await runLive({ allow, direct, fetchImpl: liveFake(), renderCheckout: render((s) => `<div>Ou R$ ${s === "ia-na-pratica" ? "87,00" : priceOf(s)} à vista</div>`) });
+  assert.deepEqual(wrong.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [["ia-na-pratica", "authorized_direct_price_mismatch:87,00"]], "[P18C.D7] preço errado no HTML do servidor reprova");
+});
