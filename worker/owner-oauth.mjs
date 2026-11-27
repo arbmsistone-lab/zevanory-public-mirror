@@ -54,7 +54,7 @@ async function cipherKey(env){
  const ikm=await crypto.subtle.importKey("raw",enc.encode(parent),"HKDF",false,["deriveKey"]);
  return crypto.subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt:HKDF_SALT,info:HKDF_INFO},ikm,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
 }
-async function bridgeSecret(env,kv){
+export async function bridgeSecret(env,kv){
  const dedicated=String(env.OWNER_OAUTH_BRIDGE_SECRET||"");
  if(dedicated.length>=32)return dedicated;
  const stored=String(await kv?.get?.(OAUTH_BRIDGE_KV_KEY)||"");

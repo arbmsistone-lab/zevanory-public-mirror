@@ -38,8 +38,16 @@ export async function checkSession(sql, hash) {
   const r = await sql.query(`/*owner-chat:session-check*/ select count(*)::int as n from (select 1 from zevanory_owner_chat_sessions where token_sha256 = $1 and revoked_at is null and expires_at > now() for share) s`, [hash]);
   return Number(r[0]?.n) === 1;
 }
-export async function createSession(sql, hash) {
-  const r = await sql.query(`/*owner-chat:session-create*/ insert into zevanory_owner_chat_sessions (token_sha256, expires_at) values ($1, now() + ($2::integer * interval '1 second')) returning 1 as ok`, [hash, SESSION_TTL_S]);
+export async function createSession(sql, hash, ttlS = SESSION_TTL_S) {
+  const ttl = Number.isInteger(ttlS) && ttlS > 0 && ttlS <= SESSION_TTL_S ? ttlS : SESSION_TTL_S;
+  const r = await sql.query(`/*owner-chat:session-create*/ insert into zevanory_owner_chat_sessions (token_sha256, expires_at) values ($1, now() + ($2::integer * interval '1 second')) returning 1 as ok`, [hash, ttl]);
+  return Number(r[0]?.ok) === 1;
+}
+// Passe do painel de uso único: grava uma linha-marcador JÁ REVOGADA (nunca vale como sessão) com a chave do passe.
+// A chave primária torna o uso atômico entre pontos de presença: a 2ª tentativa com o mesmo passe não insere nada.
+export async function claimTicket(sql, markerHash) {
+  if (!HEX64.test(String(markerHash || ""))) return false;
+  const r = await sql.query(`/*owner-chat:ticket-claim*/ insert into zevanory_owner_chat_sessions (token_sha256, expires_at, revoked_at) values ($1, now() + interval '10 minutes', now()) on conflict (token_sha256) do nothing returning 1 as ok`, [markerHash]);
   return Number(r[0]?.ok) === 1;
 }
 // Revoga (idempotente). Retorna { revoked: true, pendingActions } só depois do commit do UPDATE. A contagem de ações

@@ -22,6 +22,7 @@
 // * Sentinela proativa (cron 5,35, depois do motor): canal esperado sem publicação depois do horário vira
 //   "CANAL PARADO" com o motivo (pausado, sem credencial, erro); venda aprovada nova vira aviso.
 import { OWNER_PIN_PATHS, handlePinLogin, handlePinLogout, sessionHash, logoutPending, pinConfigured, PIN_PAGE, PIN_PAGE_HEADERS } from "./owner-pin.mjs";
+import { PANEL_SESSION_PATH, handlePanelSession } from "./owner-panel-bridge.mjs";
 import { SESSION_AUTHORITY, SESSION_VALID_SQL, ensureSessionSchema, checkSession, purgeLegacyKvSessions, sessionRetention } from "./owner-session.mjs";
 import { acquisitionSnapshot, OWNER_DISABLED_CHANNELS } from "./acquisition-engine.mjs";
 import { SALES_SUMMARY_KEY } from "./sales-ledger.mjs";
@@ -341,9 +342,12 @@ export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sq
       return new Response(PIN_PAGE, { status: 200, headers: PIN_PAGE_HEADERS });
     }
     if (request.method === "POST" && url.pathname === OWNER_PIN_PATHS.logout) return json({ error: "owner_chat_maintenance" }, 503);
+    if (url.pathname === PANEL_SESSION_PATH) return json({ error: "owner_chat_maintenance" }, 503);
     return json({ error: "auth_required" }, 401);
   }
   // Login/saída por PIN (owner-pin.mjs): rotas próprias, com CSRF e limite de tentativas; não exigem sessão.
+  // Sessão do chat a partir do passe do painel (owner-panel-bridge.mjs): sem PIN separado na tela.
+  if (url.pathname === PANEL_SESSION_PATH) return handlePanelSession(request, env, { sql: await sqlOrNull(), authority: sessionAuthority, kv: env.ZEVANORY_PRIVATE_ARTIFACTS });
   if (url.pathname === OWNER_PIN_PATHS.login) return handlePinLogin(request, env, { sql: await sqlOrNull(), authority: sessionAuthority });
   if (url.pathname === OWNER_PIN_PATHS.logout) return handlePinLogout(request, env, { sql: await sqlOrNull() });
   const basicOk = typeof isAdminAuthorized === "function" && isAdminAuthorized(request, env);
@@ -517,4 +521,10 @@ sairB.onclick=sair;retry.onclick=sair;
 // consulta e conversa oculta. Reaberta: a sessão é validada por uma consulta ANTES de a conversa reaparecer (401 encerra,
 // 409 repete o logout); a consulta segue de onde parou e nunca corre em dobro.
 window.addEventListener('message',e=>{if(e.origin!=='${PANEL_ORIGIN}'||e.source!==window.parent||!e.data||e.data.type!=='zv-owner-chat:visibility')return;const open=e.data.open===true;if(open===shown||ended)return;shown=open;if(!open){clearInterval(iv);iv=0;log.hidden=true;st.textContent='pausado';return;}openGen++;poll();iv=setInterval(poll,5000);});
+// Painel (27/11): o chat fica sempre aberto na coluna do painel, sem PIN. O painel renova o passe a cada 2 min (troca
+// por uma sessão nova de até 5 min) e, ao sair do painel, manda encerrar: o logout revoga a sessão no servidor.
+// Só a origem do painel e a janela-mãe são aceitas. Dentro do painel o botão Sair do chat some (sair do painel encerra).
+let renewing=false;async function renovar(t){if(ended||renewing)return;renewing=true;try{const r=await fetch('/api/admin/owner-chat/panel-session',{method:'POST',headers:H,body:JSON.stringify(t),signal:ctl.signal});if(r.status===401&&!ended)st.textContent='sessão do painel acabou';}catch{}finally{renewing=false;}}
+window.addEventListener('message',e=>{if(e.origin!=='${PANEL_ORIGIN}'||e.source!==window.parent||!e.data)return;if(e.data.type==='zv-owner-chat:ticket'&&e.data.ticket)renovar(e.data.ticket);else if(e.data.type==='zv-owner-chat:logout')sair();});
+if(window.parent!==window){sairB.hidden=true;window.parent.postMessage({type:'zv-owner-chat:ready'},'${PANEL_ORIGIN}');}
 if(endOn()){sair();}else{document.addEventListener('visibilitychange',poll);poll();iv=setInterval(poll,5000);}})();</script></body></html>`;

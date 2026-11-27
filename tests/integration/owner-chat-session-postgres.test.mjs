@@ -98,7 +98,7 @@ function harness(mod = chat, { gate = null, port = PORT } = {}) {
   const kv = memKv(); const sql = pg({ port, gate });
   const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://isolado", OWNER_CHAT_PIN: PIN };
   const deps = { isAdminAuthorized: () => false, sqlFactory: () => sql, snapshot: async () => ({ day: "2026-11-26", today: [] }) };
-  return { kv, sql, call: (r) => mod.handleOwnerChat(r, env, deps) };
+  return { kv, sql, env, call: (r) => mod.handleOwnerChat(r, env, deps) };
 }
 const H = (extra = {}) => ({ origin: ORIGIN, "x-owner-chat": "1", "content-type": "application/json", ...extra });
 const login = (h, value = PIN, ip = "10.9." + (ipSeq >> 8) + "." + (ipSeq++ & 255)) => h.call(new Request(ORIGIN + "/api/admin/owner-chat/pin", { method: "POST", body: JSON.stringify({ pin: value }), headers: H({ "cf-connecting-ip": ip }) }));
@@ -368,4 +368,26 @@ test("contraprovas: guarda removida da reivindicação, do envio e da leitura; s
 }
 async function reserveAttemptOriginal(sql, ipHash) {`);
   await rejects(async () => { const { ip, g } = await scenarioPinConcurrency(racy); assert.deepEqual(ip, { e401: 5, e429: 25, n: "5" }); assert.deepEqual(g, { e401: 20, e429: 20 }); }, "contador-nao-atomico");
+});
+
+// 27/11: passe do painel de uso único no PostgreSQL REAL (linha-marcador já revogada, chave primária atômica).
+test("passe do painel: 20 trocas simultâneas do mesmo passe = exatamente 1 sessão; marcador nunca vale; sessão de 5 min pelo relógio do banco", { skip: SKIP }, async () => {
+  const h = harness();
+  const bridge = await import(pathToFileURL(join(ROOT, "worker/owner-panel-bridge.mjs")).href);
+  const key = "k".repeat(48); h.env.OWNER_OAUTH_BRIDGE_SECRET = key;
+  const t0 = { ts: String(Date.now()), nonce: "pg".padEnd(43, "q"), exp: String(Date.now() + 3600_000) };
+  const t = { ...t0, sig: await bridge.ticketSignature(key, t0) };
+  const call = () => h.call(new Request(ORIGIN + bridge.PANEL_SESSION_PATH, { method: "POST", body: JSON.stringify(t), headers: { origin: ORIGIN, "x-owner-chat": "1", "content-type": "application/json" } }));
+  const rs = await Promise.all(Array.from({ length: 20 }, call));
+  assert.equal(rs.filter((r) => r.status === 200).length, 1, "um único sucesso");
+  assert.equal(rs.filter((r) => r.status === 401).length, 19, "19 reusos recusados");
+  const marker = await pin.sha256Hex("panel-ticket:" + t.nonce);
+  assert.equal(n1(`select count(*) as n from zevanory_owner_chat_sessions where token_sha256 = ${lit(marker)} and revoked_at is not null`), 1, "marcador gravado já revogado");
+  assert.equal(await sess.checkSession(pg(), marker), false, "marcador nunca é sessão válida");
+  const c = rs.find((r) => r.status === 200).headers.getSetCookie().find((x) => x.startsWith("zv_owner_chat=")).split(";")[0];
+  const hash = await pin.sha256Hex(c.split("=")[1]);
+  assert.equal(q1(`select extract(epoch from (expires_at - created_at))::int as ttl from zevanory_owner_chat_sessions where token_sha256 = ${lit(hash)}`)[0].ttl, "300", "5 min");
+  assert.equal((await feed(h, c)).status, 200);
+  q1(`update zevanory_owner_chat_sessions set expires_at = now() - interval '1 second' where token_sha256 = ${lit(hash)}`);
+  assert.equal((await feed(h, c)).status, 401, "vencida pelo relógio do banco");
 });
