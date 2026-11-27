@@ -1,0 +1,75 @@
+name: p18-leitura-br-teste
+# ZEVANORY | P18 — teste da leitura a partir de São Paulo (Edge Function Supabase "p18-leitura-br", projeto Free da
+# ZEVANORY). Disparado do runner do GitHub com x-region: sa-east-1; exige x-sb-edge-region: sa-east-1 na resposta,
+# BRL nos 5 kits com os preços decididos e Conteúdo Pronto fechado. Somente GET, sem segredo, sem escrita.
+# NÃO decide o P18: só prova (ou derruba) o ponto de leitura antes de integrá-lo ao monitor oficial.
+on:
+  push:
+    branches: [feat/p18-leitura-br]
+    paths:
+      - ".github/workflows/p18-leitura-br-teste.yml"
+      - "data/p18-leitura-br-endpoint.json"
+      - "supabase/functions/p18-leitura-br/index.ts"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p18-leitura-br-teste
+  cancel-in-progress: false
+jobs:
+  teste:
+    name: p18-leitura-br / teste sa-east-1 (somente GET, não decide)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            data
+      - name: Chamada regional e conferência
+        shell: bash
+        run: |
+          set +e -uo pipefail
+          test -f data/p18-leitura-br-endpoint.json || { echo "::error title=P18_BR::endpoint_nao_configurado"; exit 1; }
+          url=$(python3 -c "import json;d=json.load(open('data/p18-leitura-br-endpoint.json'));u=d['url'];assert u.startswith('https://') and u.endswith('.supabase.co/functions/v1/p18-leitura-br'),u;print(u)") || { echo "::error title=P18_BR::endpoint_invalido"; exit 1; }
+          curl -sS --max-time 120 -D "$RUNNER_TEMP/h.txt" -H "x-region: sa-east-1" -H "accept: application/json" "$url" -o "$RUNNER_TEMP/r.json"
+          echo "curl_exit=$? http=$(head -1 "$RUNNER_TEMP/h.txt" | tr -d '\r')"
+          python3 - "$RUNNER_TEMP/h.txt" "$RUNNER_TEMP/r.json" <<'PY'
+          import json, sys
+          hdr = {}
+          for line in open(sys.argv[1], encoding="latin-1"):
+              if ":" in line: k, v = line.split(":", 1); hdr[k.strip().lower()] = v.strip()
+          fails = []
+          edge = hdr.get("x-sb-edge-region")
+          print(f"P18_BR header x-sb-edge-region={edge}")
+          if edge != "sa-east-1": fails.append(f"regiao_divergente:{edge}")
+          try: r = json.load(open(sys.argv[2]))
+          except Exception as e: print(f"::error title=P18_BR::resposta_nao_json {e}"); sys.exit(1)
+          want = {"ia-na-pratica": "97,00", "vendas-na-pratica": "97,00", "lucro-e-caixa": "147,00", "combo-ia-vendas": "157,00", "negocio-completo": "247,00"}
+          print(f"P18_BR region={r.get('region')} verdict={r.get('verdict')} started={r.get('started_at')} verifier_sha256={(r.get('verifier') or {}).get('verifier_sha256')}")
+          kits = {k["slug"]: k for k in r.get("kits", [])}
+          for slug, price in want.items():
+              k = kits.get(slug)
+              if not k: fails.append(f"{slug}:ausente"); continue
+              print(f"P18_BR kit {slug} at={k['at']} http={k['http']} produto={k['product']} oferta={k['offer']} moeda={k['currency']} moedas_vistas={','.join(k.get('currencies_seen') or [])} a_vista={k['cash_price']} esperado={price} {k['verdict']} {k['reason']}")
+              if k.get("currency") != "BRL": fails.append(f"{slug}:moeda:{k.get('currency')}:{','.join(k.get('currencies_seen') or [])}")
+              if k.get("cash_price") != price: fails.append(f"{slug}:preco:{k.get('cash_price')}")
+              if k.get("verdict") != "PASS": fails.append(f"{slug}:{k.get('reason')}")
+          cp = r.get("conteudo_pronto") or {}
+          print(f"P18_BR conteudo-pronto at={cp.get('at')} http={cp.get('http')} fechado={cp.get('closed')} evidencia={cp.get('evidence')} {cp.get('verdict')} {cp.get('reason')}")
+          if cp.get("closed") is not True: fails.append("conteudo-pronto:nao_fechado")
+          if r.get("verdict") != "PASS": fails.append(f"veredito:{r.get('verdict')}")
+          for f in fails: print(f"::error title=P18_BR_FAIL::{f}")
+          print("P18_BR_TESTE " + ("PASS" if not fails else "FAIL falhas=" + str(len(fails))))
+          sys.exit(1 if fails else 0)
+          PY
+      - name: Evidência
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: p18-leitura-br-${{ github.run_id }}
+          path: ${{ runner.temp }}/r.json
+          if-no-files-found: warn
+          retention-days: 30
