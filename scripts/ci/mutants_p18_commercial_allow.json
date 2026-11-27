@@ -548,6 +548,11 @@
           "test_pattern": "P18C.D8: o preço pertence à oferta certa",
           "assertion_pattern": "[P18C.D8] ao vivo: moeda",
           "justification": "dado estruturado do ia-na-pratica vem só do HTML bruto"
+        },
+        {
+          "test_pattern": "P18C.D9: com o navegador, um GET simples",
+          "assertion_pattern": "[P18C.D9] GET simples divergente reprova",
+          "justification": "sem o HTML bruto (97,00) só resta o GET simples (87,00): o motivo vira mismatch, não divergência entre fontes"
         }
       ]
     },
@@ -648,7 +653,13 @@
           "assertion_pattern": "[P18C.D8] HTML do servidor e página divergem"
         }
       ],
-      "secondary": []
+      "secondary": [
+        {
+          "test_pattern": "P18C.D9: com o navegador, um GET simples",
+          "assertion_pattern": "[P18C.D9] GET simples divergente reprova",
+          "justification": "mesma regra de divergência entre fontes, ao vivo"
+        }
+      ]
     },
     "K49 mesma oferta com dados diferentes aceita": {
       "primary": [
@@ -691,8 +702,23 @@
           "test_pattern": "P18C.D4: desvios reais continuam reprovando",
           "assertion_pattern": "[P18C.D4] preço diferente do decidido",
           "justification": "com a parcela 2 lida como à vista, o motivo do lucro-e-caixa vira divergente, não mais o preço decidido"
+        },
+        {
+          "test_pattern": "P18C.D9: com o navegador, um GET simples",
+          "assertion_pattern": "[P18C.D9] GET simples supre o dado estruturado",
+          "justification": "parcela 2 vira valor à vista divergente também no GET simples"
         }
-      ]
+      ],
+      "broad_reason": "a leitura do preço à vista é comum a todo cenário com kit aberto (D3, D4, D7, D8, D9): contar a parcela 2 quebra todos eles"
+    },
+    "K51 GET simples ignorado no preço estruturado": {
+      "primary": [
+        {
+          "test_pattern": "P18C.D9: com o navegador, um GET simples",
+          "assertion_pattern": "[P18C.D9] GET simples supre o dado estruturado"
+        }
+      ],
+      "secondary": []
     }
   }
 }

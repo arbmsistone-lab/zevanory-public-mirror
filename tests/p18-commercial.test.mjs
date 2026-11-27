@@ -11,7 +11,7 @@ import {
   loadAllowlist, validateAllowlist, extractPurchaseLinks, checkLinkShape, readSalesMode, classifyCheckout, decideCheckout,
   decideSiteRoute, safeGet, safeInit, assertSafeInit, runOffline, runLive, buildReport, workerCheckoutLinks, PASS, FAIL, MAX_REDIRECTS,
   loadDirectAuthorization, validateDirectAuthorization, cashPrices, directEntry, decideDirectCheckout,
-  decodeNuxtData, structuredOfferPrice, structuredFromSources,
+  decodeNuxtData, structuredOfferPrice, structuredFromSources, structuredDiag,
 } from "../scripts/b0/p18-commercial.mjs";
 
 const FX = (n) => readTextNormalized(new URL("./fixtures/p18-commercial/" + n, import.meta.url));
@@ -529,4 +529,24 @@ test("P18C.D8: o preço pertence à oferta certa — produto e oferta exatos, BR
   assert.deepEqual(await one(nuxtScript(nuxtProduct("ia-na-pratica", { offer: "outra123" }))), [["ia-na-pratica", "authorized_direct_offer_mismatch:8704733/outra123"]], "[P18C.D8] ao vivo: oferta");
   assert.deepEqual(await one(nuxtScript(nuxtProduct("ia-na-pratica", { pix: "87,00" }))), [["ia-na-pratica", "authorized_direct_price_divergent:87,00|97,00"]], "[P18C.D8] ao vivo: divergente");
   assert.deepEqual(await one(""), [["ia-na-pratica", "authorized_direct_price_unverified"]], "[P18C.D8] ao vivo: ausente");
+});
+
+test("P18C.D9: com o navegador, um GET simples do mesmo link também fornece o dado estruturado; diagnóstico por fonte sem conteúdo", async () => {
+  const kits = new Set(KITS.map((k) => k.slug));
+  // Navegador sem dado estruturado (como no runner do CI em 27/11); GET simples com o HTML do servidor.
+  const render = async (u) => { const s = slugOfUrl(u); return kits.has(s) ? { status: 200, body: productFixture(s, "hotmart-open-ok.html"), ssr: "", ssr_raw: "" } : { status: 200, body: closedOf(s) }; };
+  const f = liveFake({ checkout: authorizedCheckout });
+  const ok = await runLive({ allow, direct, fetchImpl: f, renderCheckout: render });
+  assert.equal(ok.verdict, PASS, "[P18C.D9] GET simples supre o dado estruturado: " + JSON.stringify(ok.results.filter((x) => x.verdict === FAIL)));
+  const ia = ok.results.find((x) => x.slug === "ia-na-pratica" && x.source === "live:checkout");
+  assert.deepEqual(ia.structured_sources.map((x) => [x.src, x.nuxt_scripts, x.state]), [["ssr_raw", 0, "absent"], ["body", 0, "absent"], ["plain_get", 1, "ok"]], "[P18C.D9] diagnóstico por fonte");
+  assert.equal(ia.plain_get_status, 200, "[P18C.D9] status do GET simples");
+  assert.ok(f.calls.every((c) => c.method === "GET"), "[P18C.D9] só GET");
+  assert.equal(f.calls.filter((c) => c.url.startsWith("https://pay.hotmart.com/")).length, 5, "[P18C.D9] GET simples só nos 5 kits autorizados");
+  // GET simples com outro preço: divergência entre fontes reprova.
+  const g = liveFake({ checkout: (u) => { const s = slugOfUrl(u); return [200, null, s === "ia-na-pratica" ? openKit(s, "87,00") : authorizedCheckout(u)[2]]; } });
+  const both = async (u) => { const r = await render(u); const s = slugOfUrl(u); return kits.has(s) ? { ...r, ssr_raw: nuxtScript(nuxtProduct(s)) } : r; };
+  const dv = await runLive({ allow, direct, fetchImpl: g, renderCheckout: both });
+  assert.deepEqual(dv.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [["ia-na-pratica", "authorized_direct_price_divergent:sources:97,00|87,00"]], "[P18C.D9] GET simples divergente reprova");
+  assert.deepEqual(structuredDiag([["x", undefined]], direct.products[0]), [{ src: "x", bytes: 0, nuxt_scripts: 0, state: "absent" }], "[P18C.D9] fonte vazia");
 });
