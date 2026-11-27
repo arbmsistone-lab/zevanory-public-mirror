@@ -23,7 +23,26 @@ export const BR_REGION = "sa-east-1";
 export const BR_MAX_AGE_MS = 15 * 60 * 1000;
 export const BR_PATH = "/functions/v1/p18-leitura-br";
 const HERE = dirname(fileURLToPath(import.meta.url));
-export const verifierSha256 = (file = join(HERE, "p18-commercial.mjs")) => createHash("sha256").update(readFileSync(file, "utf8")).digest("hex");
+// Mesmo hash do gerador da função (scripts/p18/edge/build.mjs): fim de linha normalizado para \n (Windows/CRLF).
+export const verifierSha256 = (file = join(HERE, "p18-commercial.mjs")) => createHash("sha256").update(readFileSync(file, "utf8").replace(/\r\n?/g, "\n")).digest("hex");
+
+// Prazo para falta de evidência, calculado sobre o histórico do PRÓPRIO workflow no gh-pages (execuções concluídas,
+// mais recente primeiro: {conclusion, created_at}) + o veredito desta execução:
+//   ≥ 2 execuções seguidas sem PASS (esta incluída)        → alerta P18_ALERTA_SEM_EVIDENCIA (anotação de erro)
+//   nenhum PASS nas últimas 24 h (ou nenhum PASS registrado) → P18_EVIDENCIA_EXPIRADA: P18 sem evidência oficial
+export const ALERT_CONSECUTIVE = 2, EXPIRY_MS = 24 * 3600 * 1000;
+export function deadlineStatus(history, currentVerdict, now = Date.now()) {
+  const runs = [{ conclusion: currentVerdict === PASS ? "success" : "failure", created_at: new Date(now).toISOString() },
+    ...(Array.isArray(history) ? history : []).filter((r) => r && ["success", "failure"].includes(r.conclusion) && Number.isFinite(Date.parse(r.created_at)))];
+  let consecutive = 0;
+  for (const r of runs) { if (r.conclusion === "success") break; consecutive++; }
+  const lastPass = runs.find((r) => r.conclusion === "success");
+  const lastPassAt = lastPass ? lastPass.created_at : null;
+  const hoursWithout = lastPass ? (now - Date.parse(lastPassAt)) / 3600000 : null;
+  const expired = !lastPass || now - Date.parse(lastPassAt) > EXPIRY_MS;
+  return { consecutive_failures: consecutive, alert: consecutive >= ALERT_CONSECUTIVE, last_pass_at: lastPassAt,
+    hours_without_pass: hoursWithout === null ? null : Math.round(hoursWithout * 10) / 10, expired };
+}
 
 export function brEndpointOk(url) {
   try { const u = new URL(url); return u.protocol === "https:" && /^[a-z0-9]{20}\.supabase\.co$/.test(u.hostname) && u.pathname === BR_PATH && !u.search && !u.hash && !u.username && !u.password && !u.port; }
@@ -80,6 +99,15 @@ export function applyBrEvidence(report, br, direct, { verifierSha, now = Date.no
 
 async function main(argv) {
   const arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
+  if (argv.includes("--deadline")) {
+    // Modo prazo: lê o histórico (JSON da API de execuções do GitHub) e o veredito desta execução; só anota.
+    let runs = []; try { runs = (JSON.parse(readFileSync(arg("--deadline"), "utf8")).workflow_runs || []).map((r) => ({ conclusion: r.conclusion, created_at: r.created_at })); } catch { runs = []; }
+    const st = deadlineStatus(runs, arg("--current", FAIL));
+    console.log(`P18_PRAZO falhas_seguidas=${st.consecutive_failures} ultimo_pass=${st.last_pass_at ?? "nenhum"} horas_sem_pass=${st.hours_without_pass ?? "-"} alerta=${st.alert} expirado=${st.expired}`);
+    if (st.alert) console.log(`::error title=P18_ALERTA_SEM_EVIDENCIA::${st.consecutive_failures} execuções seguidas sem PASS do P18 ao vivo`);
+    if (st.expired) console.log(`::error title=P18_EVIDENCIA_EXPIRADA::nenhum PASS oficial do P18 nas últimas 24 h (último: ${st.last_pass_at ?? "nenhum"})`);
+    return 0;
+  }
   const out = arg("--out", null), root = arg("--root", "."), endpointFile = arg("--br-endpoint", "data/p18-leitura-br-endpoint.json");
   const allow = loadAllowlist(root), direct = loadDirectAuthorization(root, allow);
   let url = null; try { url = JSON.parse(readFileSync(join(root, endpointFile), "utf8")).url; } catch { url = null; }

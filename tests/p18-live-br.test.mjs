@@ -1,13 +1,15 @@
 // P18 ao vivo com o preço lido de São Paulo (scripts/b0/p18-live-br.mjs). Sem rede.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { loadAllowlist, loadDirectAuthorization, buildReport, PASS, FAIL } from "../scripts/b0/p18-commercial.mjs";
-import { applyBrEvidence, decideBrEvidence, fetchBrRead, brEndpointOk, verifierSha256, BR_MAX_AGE_MS } from "../scripts/b0/p18-live-br.mjs";
+import { applyBrEvidence, decideBrEvidence, fetchBrRead, brEndpointOk, verifierSha256, BR_MAX_AGE_MS, deadlineStatus } from "../scripts/b0/p18-live-br.mjs";
 
 const allow = loadAllowlist("."), direct = loadDirectAuthorization(".", allow);
-const SHA = createHash("sha256").update(readFileSync("scripts/b0/p18-commercial.mjs", "utf8")).digest("hex");
+const SHA = createHash("sha256").update(readFileSync("scripts/b0/p18-commercial.mjs", "utf8").replace(/\r\n?/g, "\n")).digest("hex");
 const NOW = Date.parse("2026-11-27T22:00:00Z");
 const URL_OK = "https://abcdefghijklmnopqrst.supabase.co/functions/v1/p18-leitura-br";
 const kitOf = (e, over = {}) => ({ slug: e.slug, at: "2026-11-27T21:59:10Z", http: 200, product: e.hotmart_product_id, offer: e.offer, currency: "BRL", currencies_seen: ["BRL"], cash_price: e.price_cash_brl, expected_brl: e.price_cash_brl, structured: "ok", verdict: "PASS", reason: "open_authorized_direct_hotmart", ...over });
@@ -72,4 +74,21 @@ test("P18LB.4: chamada só GET, sem cookie, com x-region: sa-east-1, só ao endp
   assert.equal((await fetchBrRead(URL_OK, { fetchImpl: async () => ({ status: 503, headers: { get: () => null }, text: async () => "" }) })).error, "http_503");
   assert.equal((await fetchBrRead(URL_OK, { fetchImpl: async () => { throw new Error("timeout"); } })).error, "rede:timeout");
   assert.equal(verifierSha256(), SHA, "[P18LB.4] sha do verificador local");
+});
+
+test("P18LB.5: prazo — 2 execuções seguidas sem PASS = alerta; nenhum PASS em 24 h = evidência expirada; PASS zera", () => {
+  const h = (min, c) => ({ conclusion: c, created_at: new Date(NOW - min * 60000).toISOString() });
+  assert.deepEqual(deadlineStatus([h(30, "success")], FAIL, NOW), { consecutive_failures: 1, alert: false, last_pass_at: h(30, "success").created_at, hours_without_pass: 0.5, expired: false }, "[P18LB.5] 1 falha");
+  const two = deadlineStatus([h(30, "failure"), h(60, "success")], FAIL, NOW);
+  assert.deepEqual([two.consecutive_failures, two.alert, two.expired], [2, true, false], "[P18LB.5] 2 seguidas = alerta");
+  const exp = deadlineStatus([h(30, "failure"), h(25 * 60, "success")], FAIL, NOW);
+  assert.deepEqual([exp.alert, exp.expired, exp.hours_without_pass], [true, true, 25], "[P18LB.5] 24 h sem PASS = expirada");
+  assert.equal(deadlineStatus([], FAIL, NOW).expired, true, "[P18LB.5] nunca passou = expirada");
+  const ok = deadlineStatus([h(30, "failure"), h(60, "failure")], PASS, NOW);
+  assert.deepEqual([ok.consecutive_failures, ok.alert, ok.expired], [0, false, false], "[P18LB.5] PASS agora zera");
+  assert.equal(deadlineStatus([h(30, "cancelled"), h(60, "failure")], FAIL, NOW).consecutive_failures, 2, "[P18LB.5] cancelada não conta");
+  // Portabilidade: hash do verificador igual com CRLF.
+  const d = mkdtempSync(join(tmpdir(), "p18lb-")); const f = join(d, "v.mjs");
+  writeFileSync(f, readFileSync("scripts/b0/p18-commercial.mjs", "utf8").replace(/\r?\n/g, "\r\n"));
+  assert.equal(verifierSha256(f), SHA, "[P18LB.5] sha igual com CRLF");
 });

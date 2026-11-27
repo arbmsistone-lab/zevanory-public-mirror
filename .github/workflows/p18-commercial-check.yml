@@ -37,6 +37,7 @@ on:
 
 permissions:
   contents: read
+  actions: read  # prazo da evidência: lê o histórico deste workflow (somente leitura)
 
 concurrency:
   group: p18-commercial-check-${{ github.event_name }}-${{ github.ref }}
@@ -111,6 +112,16 @@ jobs:
           # Zero FAIL lines is the green case: grep exits 1 then, which must not fail the step (exit code comes from node).
           { grep -E '^FAIL ' "$RUNNER_TEMP/live.txt" || true; } | head -20 | while read -r l; do echo "::error title=P18_COMMERCIAL_FAIL::$l"; done
           exit "$code"
+      - name: Prazo da evidência (2 falhas seguidas = alerta; 24 h sem PASS = expirada)
+        if: ${{ always() && github.ref == 'refs/heads/gh-pages' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e -uo pipefail
+          verdict=$(grep -oE '^P18_COMMERCIAL mode=live verdict=[A-Z]+' "$RUNNER_TEMP/live.txt" | sed 's/.*verdict=//')
+          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/p18-commercial-check.yml/runs?branch=gh-pages&status=completed&per_page=60" > "$RUNNER_TEMP/runs.json" || echo '{"workflow_runs":[]}' > "$RUNNER_TEMP/runs.json"
+          node scripts/b0/p18-live-br.mjs --deadline "$RUNNER_TEMP/runs.json" --current "${verdict:-FAIL}"
       - name: Relatório
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
