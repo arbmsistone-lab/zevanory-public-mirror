@@ -18,6 +18,9 @@ on:
       - ".github/workflows/p18-commercial-check.yml"
       - "scripts/b0/p18-commercial.mjs"
       - "scripts/b0/p18-commercial-browser.mjs"
+      - "scripts/b0/p18-live-br.mjs"
+      - "data/p18-leitura-br-endpoint.json"
+      - "tests/p18-live-br.test.mjs"
       - "data/p18-commercial-allowlist.json"
       - "data/p18-hotmart-direct-authorization.json"
       - "data/products.json"
@@ -58,10 +61,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/p18-commercial.test.mjs | tee /tmp/t.txt
+          node --test tests/p18-commercial.test.mjs tests/p18-live-br.test.mjs | tee /tmp/t.txt
           # contagem vem do manifesto da suíte (fonte única; #1068 quebrou com "18" fixo aqui e 20 no manifesto)
-          n=$(awk '$1=="tests/p18-commercial.test.mjs"{print $2}' tests/node-suite.manifest)
-          [[ "$n" =~ ^[1-9][0-9]*$ ]] || { echo "::error::tests/p18-commercial.test.mjs sem contagem válida no manifesto"; exit 1; }
+          n=$(awk '$1=="tests/p18-commercial.test.mjs"||$1=="tests/p18-live-br.test.mjs"{s+=$2;c++} END{if(c==2)print s}' tests/node-suite.manifest)
+          [[ "$n" =~ ^[1-9][0-9]*$ ]] || { echo "::error::p18-commercial/p18-live-br sem contagem válida no manifesto"; exit 1; }
           for l in "# tests $n" "# pass $n" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
       - name: Modo offline (sem rede)
         shell: bash
@@ -102,7 +105,7 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          node scripts/b0/p18-commercial.mjs --mode live --browser --out "$RUNNER_TEMP/p18-commercial.json" | tee "$RUNNER_TEMP/live.txt"
+          node scripts/b0/p18-live-br.mjs --browser --out "$RUNNER_TEMP/p18-commercial.json" | tee "$RUNNER_TEMP/live.txt"
           code=${PIPESTATUS[0]}
           echo "::notice title=P18_COMMERCIAL::$(grep -E '^P18_COMMERCIAL ' "$RUNNER_TEMP/live.txt")"
           # Zero FAIL lines is the green case: grep exits 1 then, which must not fail the step (exit code comes from node).
