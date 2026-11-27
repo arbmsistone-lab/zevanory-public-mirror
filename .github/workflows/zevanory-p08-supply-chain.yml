@@ -5,10 +5,13 @@ on:
     branches: [gh-pages]
     paths:
       - ".github/workflows/zevanory-p08-supply-chain.yml"
+      - "scripts/ci/p08_sca.py"
   pull_request:
     branches: [gh-pages]
     paths:
       - ".github/workflows/zevanory-p08-supply-chain.yml"
+      - "scripts/ci/p08_sca.py"
+      - "tests/test_p08_sca.py"
   workflow_run:
     workflows: ["ZEVANORY central production deploy"]
     types: [completed]
@@ -32,6 +35,16 @@ jobs:
     env:
       REPOSITORY_URL: https://github.com/arbmsistone-lab/zevanory-public-mirror.git
     steps:
+      # SCA por ecossistema (scripts/ci/p08_sca.py) vem do próprio gate, no SHA deste workflow; a árvore certificada é
+      # a da release exata (target/). Os testes do gate rodam antes de qualquer veredito.
+      - name: Checkout P08 gate
+        uses: actions/checkout@v4
+        with:
+          path: gate
+          persist-credentials: false
+      - name: P08 SCA gate self-test (no network)
+        shell: bash
+        run: python3 -m unittest discover -s gate/tests -p 'test_p08_sca.py' -v
       - name: Resolve certified live release
         shell: bash
         run: |
@@ -79,16 +92,18 @@ jobs:
               rows.append({"path":p,"sha256":hashlib.sha256(data).hexdigest(),"bytes":len(data)})
           tracked_tree_sha256=hashlib.sha256(json.dumps(rows,sort_keys=True,separators=(",",":")).encode()).hexdigest()
 
-          manifest_patterns=[
-            r"(^|/)package\.json$",r"(^|/)package-lock\.json$",r"(^|/)pnpm-lock\.yaml$",r"(^|/)yarn\.lock$",
-            r"(^|/)requirements[^/]*\.txt$",r"(^|/)pyproject\.toml$",r"(^|/)poetry\.lock$",r"(^|/)Pipfile(\.lock)?$",
-            r"(^|/)go\.mod$",r"(^|/)go\.sum$",r"(^|/)Cargo\.toml$",r"(^|/)Cargo\.lock$",
-            r"(^|/)composer\.json$",r"(^|/)composer\.lock$",r"(^|/)Gemfile(\.lock)?$"
-          ]
-          manifests=[p for p in files if any(re.search(rx,p,re.I) for rx in manifest_patterns)]
-          if manifests:
-              print("DEPENDENCY_MANIFESTS_FOUND",manifests)
-              raise SystemExit("fail_closed_manifest_requires_ecosystem_sca")
+          # SCA por ecossistema: manifesto sem SCA do seu ecossistema continua FAIL (fail-closed). PyPI: pin exato e
+          # OSV sem vulnerabilidade conhecida (scripts/ci/p08_sca.py, testado no passo anterior).
+          import sys
+          sys.path.insert(0,"gate/scripts/ci")
+          import p08_sca
+          try:
+              eco=p08_sca.run(str(root),files)
+          except p08_sca.ScaError as e:
+              print("DEPENDENCY_MANIFESTS_FOUND",p08_sca.discover(files))
+              raise SystemExit(str(e)[:400])
+          manifests=eco["manifests"]
+          print("P08_ECOSYSTEM_SCA="+eco["status"],"packages="+",".join(p["purl"] for p in eco["packages"]))
 
           action_refs=[]
           for p in files:
@@ -96,8 +111,17 @@ jobs:
                   text=(root/p).read_text("utf-8","ignore")
                   for m in re.finditer(r"\buses:\s*([^\s#]+)",text):
                       action_refs.append(m.group(1))
-          unversioned=[x for x in action_refs if "@" not in x]
-          if unversioned: raise SystemExit("unversioned_ci_action_ref")
+          # Referência local (./...) é um workflow/ação do PRÓPRIO commit certificado: fixada pelo SHA da release.
+          # Precisa existir na árvore; remota sem @ continua reprovando.
+          local_refs=sorted(set(x for x in action_refs if x.startswith("./")))
+          missing_local=[x for x in local_refs if not (root/x[2:]).is_file() and not (root/x[2:]/"action.yml").is_file() and not (root/x[2:]/"action.yaml").is_file()]
+          if missing_local:
+              print("LOCAL_CI_REF_MISSING",missing_local)
+              raise SystemExit("local_ci_action_ref_missing")
+          unversioned=[x for x in action_refs if "@" not in x and not x.startswith("./")]
+          if unversioned:
+              print("UNVERSIONED_CI_ACTION_REFS",sorted(set(unversioned)))
+              raise SystemExit("unversioned_ci_action_ref")
 
           sbom={
             "bomFormat":"CycloneDX","specVersion":"1.6","serialNumber":f"urn:uuid:zevanory-p08-{expected}",
@@ -107,25 +131,27 @@ jobs:
                 {"name":"git.commit.sha","value":expected},
                 {"name":"git.tree.sha1","value":tree_sha},
                 {"name":"tracked.tree.sha256","value":tracked_tree_sha256},
-                {"name":"dependency.ecosystem","value":"none-detected"}]}},
+                {"name":"dependency.ecosystem","value":"pypi" if eco["packages"] else "none-detected"}]}},
             "components":[{"type":"file","name":r["path"],"bom-ref":"file:"+r["path"],
               "hashes":[{"alg":"SHA-256","content":r["sha256"]}],
               "properties":[{"name":"bytes","value":str(r["bytes"])}]} for r in rows]
+            +[{"type":"library","name":p["name"],"version":p["version"],"purl":p["purl"],"bom-ref":p["purl"],
+               "properties":[{"name":"manifest","value":p["manifest"]}]} for p in eco["packages"]]
           }
           pathlib.Path("p08-sbom.cdx.json").write_text(json.dumps(sbom,sort_keys=True,indent=2)+"\n")
 
           sca={"schema":"zevanory.p08.sca.v1","release_sha":expected,
-            "dependency_manifests":manifests,"package_dependency_count":0,
-            "ecosystem_status":"NOT_APPLICABLE_NO_PACKAGE_MANAGER",
-            "method":"deterministic tracked-file manifest discovery",
+            "dependency_manifests":manifests,"package_dependency_count":len(eco["packages"]),
+            "ecosystem_status":eco["status"],"packages":eco["packages"],"osv":eco["osv"],
+            "method":"deterministic tracked-file manifest discovery; PyPI exact pins + OSV querybatch",
             "ci_action_refs":sorted(set(action_refs)),
-            "ci_action_refs_all_versioned":not unversioned,"verdict":"PASS"}
+            "ci_action_refs_all_versioned":not unversioned,"ci_local_refs_pinned_by_release_sha":local_refs,"verdict":"PASS"}
           pathlib.Path("p08-sca.json").write_text(json.dumps(sca,sort_keys=True,indent=2)+"\n")
 
           proof={"schema":"zevanory.p08.supply-chain.v1","pillar":"P08","verdict":"PROVED",
             "release_sha":expected,"git_tree_sha1":tree_sha,"tracked_tree_sha256":tracked_tree_sha256,
-            "file_count":len(rows),"dependency_inventory":{"manifests":[],"packages":[],
-              "status":"NOT_APPLICABLE_NO_PACKAGE_MANAGER"},
+            "file_count":len(rows),"dependency_inventory":{"manifests":manifests,"packages":[p["purl"] for p in eco["packages"]],
+              "status":eco["status"],"osv_clean":len(eco["osv"])==len(eco["packages"])},
             "checks":{"EXACT_SHA":"PASS","SBOM":"PASS","SCA":"PASS",
               "PINNING_VERSIONING":"PASS","PROVENANCE":"PASS","FAIL_CLOSED":"PASS"},
             "artifacts":["p08-sbom.cdx.json","p08-sca.json"],
@@ -155,7 +181,12 @@ jobs:
           assert p["release_sha"]==os.environ["EXPECTED_SHA"].lower()
           assert p["verdict"]=="PROVED"
           assert all(v=="PASS" for v in p["checks"].values())
-          assert p["dependency_inventory"]["status"]=="NOT_APPLICABLE_NO_PACKAGE_MANAGER"
+          inv=p["dependency_inventory"]
+          assert inv["status"] in ("NOT_APPLICABLE_NO_PACKAGE_MANAGER","PYPI_PINNED_OSV_CLEAN")
+          if inv["status"]=="NOT_APPLICABLE_NO_PACKAGE_MANAGER": assert inv["manifests"]==[] and inv["packages"]==[]
+          else: assert inv["manifests"] and inv["packages"] and inv["osv_clean"] is True
+          sca=json.load(open("p08-sca.json"))
+          assert sca["package_dependency_count"]==len(inv["packages"]) and len(sca["osv"])==len(inv["packages"])
           assert len(p["artifact_digest_sha256"])==64
           print("P08_SUPPLY_CHAIN=PROVED")
           print("FALSE_GREEN=0")
